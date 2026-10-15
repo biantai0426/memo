@@ -1,6 +1,7 @@
 package com.stealth.evidence.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -70,8 +71,14 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(this, "エラー：データ破壊シーケンス起動", Toast.LENGTH_LONG).show()
                         }
                     } else {
-                        // バックグラウンド録画の開始/停止トリガー
-                        Toast.makeText(this, "録画サービスを切り替えます", Toast.LENGTH_SHORT).show()
+                        // バックグラウンド録画の開始トリガー
+                        Toast.makeText(this, "録画を開始します", Toast.LENGTH_SHORT).show()
+                        val intent = Intent(this@MainActivity, StealthCameraService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
                     }
                 }
             }
