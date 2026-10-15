@@ -39,6 +39,9 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
+    // Lifecycle (LifecycleService用)
+    implementation("androidx.lifecycle:lifecycle-service:2.6.2")
+
     // CameraX
     val cameraxVersion = "1.3.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")
