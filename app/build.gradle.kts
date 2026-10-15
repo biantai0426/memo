@@ -31,6 +31,19 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    
+    // 追加：重複するMETA-INFファイルを除外してエラーを回避
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/INDEX.LIST",
+                "META-INF/io.netty.versions.properties",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/NOTICE"
+            )
+        }
+    }
 }
 
 dependencies {
