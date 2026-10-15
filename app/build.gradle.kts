@@ -41,16 +41,16 @@ dependencies {
 
     // CameraX
     val cameraxVersion = "1.3.1"
-    implementation("androidx.camera:camera-core:\$cameraxVersion")
-    implementation("androidx.camera:camera-camera2:\$cameraxVersion")
-    implementation("androidx.camera:camera-lifecycle:\$cameraxVersion")
-    implementation("androidx.camera:camera-video:\$cameraxVersion")
-    implementation("androidx.camera:camera-view:\$cameraxVersion")
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-video:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
 
     // Ktor (Embedded HTTP Server)
     val ktorVersion = "2.3.7"
-    implementation("io.ktor:ktor-server-core:\$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:\$ktorVersion")
+    implementation("io.ktor:ktor-server-core:$ktorVersion")
+    implementation("io.ktor:ktor-server-netty:$ktorVersion")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
