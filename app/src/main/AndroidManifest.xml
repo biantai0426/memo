@@ -10,8 +10,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- 追加：Android 13以降の通知権限 -->
+    <!-- Android 13以降の通知権限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 追加：盲牌操作のフィードバックに必要な振動権限 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <uses-feature android:name="android.hardware.camera" android:required="true" />
 
