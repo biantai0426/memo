@@ -57,6 +57,10 @@ class MainActivity : AppCompatActivity() {
                     failCount = 0
                     Toast.makeText(this, "クライアント（遠隔操作）モード 起動", Toast.LENGTH_SHORT).show()
                     memoEditText.setText("")
+                    
+                    // クライアント画面へ遷移
+                    val intent = Intent(this@MainActivity, ClientActivity::class.java)
+                    startActivity(intent)
                 }
                 // 自爆用PIN（例：0000）
                 "0000" -> {

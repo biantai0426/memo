@@ -12,7 +12,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Android 13以降の通知権限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 追加：盲牌操作のフィードバックに必要な振動権限 -->
+    <!-- 盲牌操作のフィードバックに必要な振動権限 -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <uses-feature android:name="android.hardware.camera" android:required="true" />
@@ -32,6 +32,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 追加：クライアント（遠隔操作）画面 -->
+        <activity
+            android:name=".ui.ClientActivity"
+            android:exported="false" />
 
         <!-- バックグラウンド常駐・録画サービス -->
         <service
