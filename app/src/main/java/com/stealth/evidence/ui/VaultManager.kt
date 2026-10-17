@@ -9,7 +9,6 @@ import java.util.Date
 import java.util.Locale
 
 class VaultManager(private val context: Context) {
-
     private val vaultDir = File(context.filesDir, "vault")
     private val xorKey: Byte = 0x5A
 
@@ -34,7 +33,6 @@ class VaultManager(private val context: Context) {
     // 録画完了後、先頭256バイトをXOR暗号化して.datとして偽装保存
     fun finalizeVideoFile(tempFile: File): File? {
         if (!tempFile.exists()) return null
-
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val finalFile = File(vaultDir, "sync_data_${timestamp}.dat")
 
@@ -69,16 +67,58 @@ class VaultManager(private val context: Context) {
         }
     }
 
+    // --- 追加：保存されている .dat ファイルの一覧を取得（新しい順） ---
+    fun getVaultFiles(): List<File> {
+        return vaultDir.listFiles { _, name -> name.endsWith(".dat") }
+            ?.toList()
+            ?.sortedByDescending { it.lastModified() }
+            ?: emptyList()
+    }
+
+    // --- 追加：再生用に .dat ファイルを復号して一時的な .mp4 ファイルを作成 ---
+    fun decryptVideoFile(datFile: File): File? {
+        if (!datFile.exists()) return null
+        // 証拠隠滅を容易にするため、復号されたファイルはキャッシュディレクトリに一時展開
+        val tempPlaybackFile = File(context.cacheDir, "playback_${System.currentTimeMillis()}.mp4")
+        
+        try {
+            FileInputStream(datFile).use { fis ->
+                FileOutputStream(tempPlaybackFile).use { fos ->
+                    val buffer = ByteArray(4096)
+                    var bytesRead = fis.read(buffer)
+                    var xoredCount = 0
+
+                    while (bytesRead != -1) {
+                        // もう一度XOR処理を行うことで元のバイトデータに復元
+                        if (xoredCount < 256) {
+                            for (i in 0 until bytesRead) {
+                                if (xoredCount < 256) {
+                                    buffer[i] = (buffer[i].toInt() xor xorKey.toInt()).toByte()
+                                    xoredCount++
+                                }
+                            }
+                        }
+                        fos.write(buffer, 0, bytesRead)
+                        bytesRead = fis.read(buffer)
+                    }
+                }
+            }
+            return tempPlaybackFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
     // 自爆機能：vault内の全.datファイルをゼロ埋め上書きしてから削除
     fun executeSelfDestruct() {
         val files = vaultDir.listFiles { _, name -> name.endsWith(".dat") } ?: return
         val zeroBuffer = ByteArray(4096) { 0 }
-        
+
         for (file in files) {
             try {
                 val size = file.length()
                 var written = 0L
-                
                 // 確実にデータを破壊するためゼロで上書き
                 FileOutputStream(file).use { fos ->
                     while (written < size) {
