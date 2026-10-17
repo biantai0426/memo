@@ -33,14 +33,12 @@ class ClientActivity : AppCompatActivity() {
 
     private val httpClient = OkHttpClient()
     
-    // 現場（サーバー）のIPアドレス。テザリング時は192.168.43.1などが一般的。
-    // ※今回は同じ端末でテストできるようローカルホストにしていますが、
-    // 実運用の際は設定画面等でIPを変更できるようにすると便利です。
+    // Androidのテザリング（親機）のデフォルトIPアドレス
     private val serverBaseUrl = "http://192.168.43.1:8080" 
     private val localTestUrl = "http://127.0.0.1:8080"
     
-    // 接続先URL（テスト時は localTestUrl、実運用時は serverBaseUrl に切り替え）
-    private var targetUrl = localTestUrl 
+    // ★修正：接続先を自分自身（localTestUrl）から、現場端末（serverBaseUrl）に変更！
+    private var targetUrl = serverBaseUrl 
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,7 +100,7 @@ class ClientActivity : AppCompatActivity() {
             sendServerRequest("$targetUrl/notify", "カモフラージュ通知を送信しました")
         }
 
-        // 6. 遠隔ダウンロード（ファイル一覧を取得して選択ダイアログを表示）
+        // 6. 遠隔ダウンロード
         downloadVideoButton.setOnClickListener {
             fetchVideoList()
         }
@@ -180,7 +178,6 @@ class ClientActivity : AppCompatActivity() {
     }
 
     private fun downloadVideoFile(fileName: String) {
-        // 端末標準のブラウザ/ダウンローダーにURLを投げてダウンロードを任せるのが一番安全で確実です
         val downloadUrl = "$targetUrl/download?name=$fileName"
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
         startActivity(intent)
