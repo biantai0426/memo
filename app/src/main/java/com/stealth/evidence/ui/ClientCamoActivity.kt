@@ -6,9 +6,13 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebView
@@ -32,13 +36,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-import kotlin.random.Random
 
 class ClientCamoActivity : AppCompatActivity() {
 
-    // ★修正：TextView から ImageView などの適切な型に変更
     private lateinit var tvTargetIpCamo: TextView
-    private lateinit var btnConfigIpCamo: ImageView // ImageViewに変更
+    private lateinit var btnConfigIpCamo: ImageView
     private lateinit var jacketContainer: FrameLayout
     private lateinit var imgJacket: ImageView
     private lateinit var webViewCamo: WebView
@@ -46,23 +48,29 @@ class ClientCamoActivity : AppCompatActivity() {
     private lateinit var tvTrackArtist: TextView
     private lateinit var tvMixListTitle: TextView
     private lateinit var progressBarCamo: SeekBar
-    private lateinit var btnPrevCamo: ImageView // ImageViewに変更
-    private lateinit var btnPlayPauseCamo: ImageView // ImageViewに変更
-    private lateinit var btnNextCamo: ImageView // ImageViewに変更
+    private lateinit var btnPrevCamo: ImageView
+    private lateinit var btnPlayPauseCamo: ImageView
+    private lateinit var btnNextCamo: ImageView
     private lateinit var lvVaultCamo: ListView
 
     private val httpClient = OkHttpClient()
     private var targetUrl = "http://127.0.0.1:8080"
 
-    private var isRecording = false
+    private var isRecording = false // 実際の録画状態
+    private var isDummyPlaying = false // 偽装UIの再生状態
     private var isPreviewVisible = false
-    private var currentTrackName = "なんもねえ"
 
+    // 取得した曲のリストと現在位置
+    data class TrackInfo(val title: String, val artist: String, val imageUrl: String)
+    private val trackList = mutableListOf<TrackInfo>()
+    private var currentTrackIndex = 0
+
+    // ダミーのシークバーを動かすタイマー
     private val handler = Handler(Looper.getMainLooper())
     private var progressValue = 0
     private val progressRunnable = object : Runnable {
         override fun run() {
-            if (isRecording) {
+            if (isDummyPlaying) {
                 progressValue = (progressValue + 1) % 100
                 progressBarCamo.progress = progressValue
                 handler.postDelayed(this, 1000)
@@ -96,7 +104,6 @@ class ClientCamoActivity : AppCompatActivity() {
         }
         webViewCamo.setBackgroundColor(0)
 
-        // Apple Musicから最新のトレンド曲を取得
         fetchAppleMusicData()
 
         btnConfigIpCamo.setOnClickListener { showIpConfigDialog() }
@@ -121,29 +128,76 @@ class ClientCamoActivity : AppCompatActivity() {
             }
         }
 
+        // --- 戻るボタン(⏮) ---
+        // タップ：前の曲へ偽装切り替え
         btnPrevCamo.setOnClickListener {
+            if (trackList.isNotEmpty()) {
+                currentTrackIndex = if (currentTrackIndex - 1 < 0) trackList.size - 1 else currentTrackIndex - 1
+                updateTrackUI()
+            }
+        }
+        // 長押し：内カメ/外カメの切り替え（ブルッ）
+        btnPrevCamo.setOnLongClickListener {
+            vibrateFeedback(longArrayOf(0, 50))
             sendServerRequest("$targetUrl/switch")
             if (isPreviewVisible) webViewCamo.postDelayed({ reloadStream() }, 1500)
+            true
         }
 
+        // --- 再生ボタン(▶/⏸) ---
+        // タップ：ダミーの音楽再生/一時停止（シークバーが動く）
         btnPlayPauseCamo.setOnClickListener {
-            isRecording = !isRecording
-            if (isRecording) {
-                // ★修正：録画中は「一時停止（⏸）」アイコン画像に切り替え
+            isDummyPlaying = !isDummyPlaying
+            if (isDummyPlaying) {
                 btnPlayPauseCamo.setImageResource(R.drawable.ic_pause_black)
-                sendServerRequest("$targetUrl/start")
                 handler.post(progressRunnable)
             } else {
-                // ★修正：録画停止時は「再生（▶）」アイコン画像に戻す
                 btnPlayPauseCamo.setImageResource(R.drawable.ic_play_arrow_black)
-                sendServerRequest("$targetUrl/stop")
                 handler.removeCallbacks(progressRunnable)
             }
         }
+        // 長押し：実際の録画の開始/停止（ブルッ / ブルッブルッ）
+        btnPlayPauseCamo.setOnLongClickListener {
+            isRecording = !isRecording
+            if (isRecording) {
+                vibrateFeedback(longArrayOf(0, 50)) // 録画開始：短1回
+                sendServerRequest("$targetUrl/start")
+            } else {
+                vibrateFeedback(longArrayOf(0, 50, 100, 50)) // 録画停止：短2回
+                sendServerRequest("$targetUrl/stop")
+            }
+            true
+        }
 
-        btnNextCamo.setOnClickListener { sendServerRequest("$targetUrl/notify") }
+        // --- 次へボタン(⏭) ---
+        // タップ：次の曲へ偽装切り替え
+        btnNextCamo.setOnClickListener {
+            if (trackList.isNotEmpty()) {
+                currentTrackIndex = (currentTrackIndex + 1) % trackList.size
+                updateTrackUI()
+            }
+        }
+        // 長押し：カモフラージュ通知送信（ブルッ）
+        btnNextCamo.setOnLongClickListener {
+            vibrateFeedback(longArrayOf(0, 50))
+            sendServerRequest("$targetUrl/notify")
+            true
+        }
 
         autoScanServer()
+    }
+
+    // 盲牌（見ないで操作）用のバイブレーションフィードバック
+    private fun vibrateFeedback(pattern: LongArray) {
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        if (vibrator.hasVibrator()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(pattern, -1)
+            }
+        }
     }
 
     private fun fetchAppleMusicData() {
@@ -158,31 +212,36 @@ class ClientCamoActivity : AppCompatActivity() {
                     val jsonObject = JSONObject(jsonStr)
                     val entries = jsonObject.getJSONObject("feed").getJSONArray("entry")
                     
-                    if (entries.length() > 0) {
-                        val randomIndex = Random.nextInt(entries.length())
-                        val entry = entries.getJSONObject(randomIndex)
-                        
+                    trackList.clear()
+                    for (i in 0 until entries.length()) {
+                        val entry = entries.getJSONObject(i)
                         val title = entry.getJSONObject("im:name").getString("label")
                         val artist = entry.getJSONObject("im:artist").getString("label")
-                        
                         val images = entry.getJSONArray("im:image")
-                        // 可能な限り高画質なジャケットを取得（URL内の解像度指定をリサイズ）
                         var imageUrl = images.getJSONObject(images.length() - 1).getString("label")
-                        imageUrl = imageUrl.replace("170x170", "600x600") 
+                        imageUrl = imageUrl.replace("170x170", "600x600")
                         
-                        currentTrackName = title
-
-                        runOnUiThread {
-                            tvTrackTitle.text = "$title ＞"
-                            tvTrackArtist.text = artist
-                            tvMixListTitle.text = "「$title」を元にしたミックスリスト"
-                        }
-                        
-                        downloadAndSetImage(imageUrl)
+                        trackList.add(TrackInfo(title, artist, imageUrl))
+                    }
+                    
+                    if (trackList.isNotEmpty()) {
+                        currentTrackIndex = 0
+                        runOnUiThread { updateTrackUI() }
                     }
                 } catch (e: Exception) {}
             }
         })
+    }
+
+    private fun updateTrackUI() {
+        if (trackList.isEmpty()) return
+        val currentTrack = trackList[currentTrackIndex]
+        
+        tvTrackTitle.text = "${currentTrack.title} ＞"
+        tvTrackArtist.text = currentTrack.artist
+        tvMixListTitle.text = "「${currentTrack.title}」を元にしたミックスリスト"
+        
+        downloadAndSetImage(currentTrack.imageUrl)
     }
 
     private fun downloadAndSetImage(imageUrl: String) {
@@ -297,7 +356,9 @@ class ClientCamoActivity : AppCompatActivity() {
                             val name = obj.getString("name")
                             val sizeMb = obj.getLong("size") / (1024 * 1024)
                             fileNames.add(name)
-                            displayItems.add("Track ${i+1} : $currentTrackName (${sizeMb}MB)")
+                            
+                            val trackName = if (trackList.isNotEmpty()) trackList[0].title else currentTrackName
+                            displayItems.add("Track ${i+1} : $trackName (${sizeMb}MB)")
                         }
                         
                         val adapter = ArrayAdapter(this@ClientCamoActivity, android.R.layout.simple_list_item_1, displayItems)
