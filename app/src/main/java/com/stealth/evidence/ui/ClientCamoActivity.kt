@@ -36,8 +36,9 @@ import kotlin.random.Random
 
 class ClientCamoActivity : AppCompatActivity() {
 
+    // ★修正：TextView から ImageView などの適切な型に変更
     private lateinit var tvTargetIpCamo: TextView
-    private lateinit var btnConfigIpCamo: TextView
+    private lateinit var btnConfigIpCamo: ImageView // ImageViewに変更
     private lateinit var jacketContainer: FrameLayout
     private lateinit var imgJacket: ImageView
     private lateinit var webViewCamo: WebView
@@ -45,9 +46,9 @@ class ClientCamoActivity : AppCompatActivity() {
     private lateinit var tvTrackArtist: TextView
     private lateinit var tvMixListTitle: TextView
     private lateinit var progressBarCamo: SeekBar
-    private lateinit var btnPrevCamo: TextView
-    private lateinit var btnPlayPauseCamo: TextView
-    private lateinit var btnNextCamo: TextView
+    private lateinit var btnPrevCamo: ImageView // ImageViewに変更
+    private lateinit var btnPlayPauseCamo: ImageView // ImageViewに変更
+    private lateinit var btnNextCamo: ImageView // ImageViewに変更
     private lateinit var lvVaultCamo: ListView
 
     private val httpClient = OkHttpClient()
@@ -128,11 +129,13 @@ class ClientCamoActivity : AppCompatActivity() {
         btnPlayPauseCamo.setOnClickListener {
             isRecording = !isRecording
             if (isRecording) {
-                btnPlayPauseCamo.text = "⏸" // ポーズアイコン
+                // ★修正：録画中は「一時停止（⏸）」アイコン画像に切り替え
+                btnPlayPauseCamo.setImageResource(R.drawable.ic_pause_black)
                 sendServerRequest("$targetUrl/start")
                 handler.post(progressRunnable)
             } else {
-                btnPlayPauseCamo.text = "▶" // プレイアイコン
+                // ★修正：録画停止時は「再生（▶）」アイコン画像に戻す
+                btnPlayPauseCamo.setImageResource(R.drawable.ic_play_arrow_black)
                 sendServerRequest("$targetUrl/stop")
                 handler.removeCallbacks(progressRunnable)
             }
