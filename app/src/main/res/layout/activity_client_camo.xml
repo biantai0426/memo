@@ -20,7 +20,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
 
-        <!-- 上部中央のトグル（ダミー） -->
+        <!-- 上部中央のトグル（ここで録画状態をステルス表示） -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -33,9 +33,9 @@
             app:layout_constraintBottom_toBottomOf="@id/btnDown"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
-            <!-- ヘッドホンアイコンは標準の物がないので文字で妥協、または別のダミーを使用 -->
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🎧" android:textColor="#FFFFFF" android:paddingEnd="12dp"/>
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="▶" android:textColor="#888888" android:textSize="12sp"/>
+            <!-- 待機中は曲(🎧)が白、録画中は動画(▶)が白になる -->
+            <TextView android:id="@+id/tvModeSong" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🎧" android:textColor="#FFFFFF" android:paddingEnd="12dp"/>
+            <TextView android:id="@+id/tvModeVideo" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="▶" android:textColor="#888888" android:textSize="12sp"/>
         </LinearLayout>
 
         <ImageView
@@ -197,7 +197,7 @@
             app:layout_constraintTop_toBottomOf="@id/progressBarCamo"
             app:layout_constraintEnd_toEndOf="parent"/>
 
-        <!-- 再生コントローラー（画像を適用） -->
+        <!-- 再生コントローラー -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

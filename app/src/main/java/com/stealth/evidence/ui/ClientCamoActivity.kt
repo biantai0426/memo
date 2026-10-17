@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -40,6 +41,8 @@ class ClientCamoActivity : AppCompatActivity() {
 
     private lateinit var tvTargetIpCamo: TextView
     private lateinit var btnConfigIpCamo: ImageView
+    private lateinit var tvModeSong: TextView
+    private lateinit var tvModeVideo: TextView
     private lateinit var jacketContainer: FrameLayout
     private lateinit var imgJacket: ImageView
     private lateinit var webViewCamo: WebView
@@ -82,6 +85,8 @@ class ClientCamoActivity : AppCompatActivity() {
 
         tvTargetIpCamo = findViewById(R.id.tvTargetIpCamo)
         btnConfigIpCamo = findViewById(R.id.btnConfigIpCamo)
+        tvModeSong = findViewById(R.id.tvModeSong)
+        tvModeVideo = findViewById(R.id.tvModeVideo)
         jacketContainer = findViewById(R.id.jacketContainer)
         imgJacket = findViewById(R.id.imgJacket)
         webViewCamo = findViewById(R.id.webViewCamo)
@@ -155,9 +160,15 @@ class ClientCamoActivity : AppCompatActivity() {
             if (isRecording) {
                 vibrateFeedback(longArrayOf(0, 50)) 
                 sendServerRequest("$targetUrl/start")
+                // 録画中インジケーター：動画(▶)を白く光らせる
+                tvModeSong.setTextColor(Color.parseColor("#888888"))
+                tvModeVideo.setTextColor(Color.parseColor("#FFFFFF"))
             } else {
                 vibrateFeedback(longArrayOf(0, 50, 100, 50)) 
                 sendServerRequest("$targetUrl/stop")
+                // 待機中インジケーター：曲(🎧)を白く光らせる
+                tvModeSong.setTextColor(Color.parseColor("#FFFFFF"))
+                tvModeVideo.setTextColor(Color.parseColor("#888888"))
             }
             true
         }
