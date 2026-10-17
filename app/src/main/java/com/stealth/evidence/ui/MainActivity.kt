@@ -35,8 +35,8 @@ class MainActivity : AppCompatActivity() {
         // 同時に、カメラをストリーミング配信用にスタンバイさせる
         startCameraStandby()
 
-        // 偽装用：右下のタブ（アイコンの代わり）を長押しした時の隠しギミック
-        findViewById<android.view.View>(R.id.tabSettings).setOnLongClickListener {
+        // ★修正：偽装用：画面上部の「メモ帳」タイトルを長押しした時の隠しギミック
+        findViewById<android.view.View>(R.id.headerTitle).setOnLongClickListener {
             showPasswordDialog()
             true
         }
