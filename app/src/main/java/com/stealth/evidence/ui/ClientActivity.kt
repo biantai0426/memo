@@ -1,11 +1,5 @@
 package com.stealth.evidence.ui
 
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -16,12 +10,16 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.stealth.evidence.R
+import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 
 class ClientActivity : AppCompatActivity() {
 
@@ -35,6 +33,9 @@ class ClientActivity : AppCompatActivity() {
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraProvider: ProcessCameraProvider? = null
     private lateinit var cameraExecutor: ExecutorService
+    
+    private val httpClient = OkHttpClient()
+    private val serverBaseUrl = "http://127.0.0.1:8080"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,7 +50,7 @@ class ClientActivity : AppCompatActivity() {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // 1. プレビューのON/OFFスイッチ
+        // 1. プレビューのON/OFFスイッチ（ローカル描画）
         previewToggleSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 viewFinder.visibility = View.VISIBLE
@@ -70,32 +71,41 @@ class ClientActivity : AppCompatActivity() {
             if (previewToggleSwitch.isChecked) {
                 startCameraPreview()
             }
-            Toast.makeText(this, "カメラを切り替えました", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "カメラ向きを切り替えました", Toast.LENGTH_SHORT).show()
         }
 
-        // 3. 録画開始
+        // 3. 録画開始（サーバーの /start エンドポイントを叩く）
         startRecordButton.setOnClickListener {
-            val intent = android.content.Intent(this, StealthCameraService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            Toast.makeText(this, "遠隔：録画を開始しました", Toast.LENGTH_SHORT).show()
+            val facingStr = if (lensFacing == CameraSelector.LENS_FACING_FRONT) "front" else "back"
+            sendServerRequest("$serverBaseUrl/start?facing=$facingStr", "遠隔録画を開始しました")
         }
 
-        // 4. 録画停止
+        // 4. 録画停止（サーバーの /stop エンドポイントを叩く）
         stopRecordButton.setOnClickListener {
-            val intent = android.content.Intent(this, StealthCameraService::class.java)
-            stopService(intent)
-            Toast.makeText(this, "遠隔：録画を停止しました", Toast.LENGTH_SHORT).show()
+            sendServerRequest("$serverBaseUrl/stop", "遠隔録画を停止しました")
         }
 
-        // 5. ダミー（カモフラージュ）通知送信
+        // 5. ダミー通知送信（サーバーの /notify エンドポイントを叩く）
         sendNotificationButton.setOnClickListener {
-            sendCamouflageNotification()
-            Toast.makeText(this, "カモフラージュ通知を送信しました", Toast.LENGTH_SHORT).show()
+            sendServerRequest("$serverBaseUrl/notify", "カモフラージュ通知を送信しました")
         }
+    }
+
+    private fun sendServerRequest(url: String, successMessage: String) {
+        val request = Request.Builder().url(url).build()
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread {
+                    Toast.makeText(this@ClientActivity, "サーバー通信失敗: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                runOnUiThread {
+                    Toast.makeText(this@ClientActivity, successMessage, Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
     }
 
     private fun startCameraPreview() {
@@ -124,35 +134,6 @@ class ClientActivity : AppCompatActivity() {
 
     private fun unbindPreview() {
         cameraProvider?.unbindAll()
-    }
-
-    private fun sendCamouflageNotification() {
-        val channelId = "camouflage_channel"
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "System Background Sync",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-            notificationManager.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("システム同期")
-            .setContentText("同期を開始しました (バックグラウンド処理中)")
-            .setSmallIcon(android.R.drawable.ic_popup_sync)
-            .setAutoCancel(true)
-            .build()
-
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
-        ) {
-            notificationManager.notify(999, notification)
-        }
     }
 
     override fun onDestroy() {
