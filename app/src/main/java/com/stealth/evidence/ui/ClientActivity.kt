@@ -95,7 +95,7 @@ class ClientActivity : AppCompatActivity() {
         sendNotificationButton.setOnClickListener { sendServerRequest("$targetUrl/notify", "カモフラージュ通知を送信") }
         downloadVideoButton.setOnClickListener { fetchVideoList() }
 
-        // 画面起動時にネットワークを自動スキャン
+        // 画面起動時にネットワークを自動スキャン（クラッシュ対策済み）
         autoScanServer()
     }
 
@@ -147,16 +147,21 @@ class ClientActivity : AppCompatActivity() {
         
         val possibleIps = mutableListOf("192.168.43.1", "192.168.49.1", "127.0.0.1")
         
-        // 自分がWi-Fiに繋がっている場合、ゲートウェイ（親機）のIPを取得して最優先で試す
-        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val dhcp = wifiManager.dhcpInfo
-        if (dhcp != null && dhcp.gateway != 0) {
-            val ip = dhcp.gateway
-            val gatewayIp = String.format("%d.%d.%d.%d",
-                (ip and 0xff), (ip shr 8 and 0xff), (ip shr 16 and 0xff), (ip shr 24 and 0xff))
-            if (!possibleIps.contains(gatewayIp)) {
-                possibleIps.add(0, gatewayIp)
+        // ★修正：権限エラーなどでクラッシュしないようtry-catchで完全に保護
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val dhcp = wifiManager.dhcpInfo
+            if (dhcp != null && dhcp.gateway != 0) {
+                val ip = dhcp.gateway
+                val gatewayIp = String.format("%d.%d.%d.%d",
+                    (ip and 0xff), (ip shr 8 and 0xff), (ip shr 16 and 0xff), (ip shr 24 and 0xff))
+                if (!possibleIps.contains(gatewayIp)) {
+                    possibleIps.add(0, gatewayIp)
+                }
             }
+        } catch (e: Exception) {
+            // エラーが発生してもアプリは落とさず、あらかじめ用意した possibleIps のみでスキャンを続行する
+            e.printStackTrace()
         }
 
         Thread {
