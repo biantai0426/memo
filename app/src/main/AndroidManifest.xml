@@ -33,9 +33,14 @@
             </intent-filter>
         </activity>
 
-        <!-- 追加：クライアント（遠隔操作）画面 -->
+        <!-- クライアント（遠隔操作）画面 -->
         <activity
             android:name=".ui.ClientActivity"
+            android:exported="false" />
+
+        <!-- 追加：秘密のコントロールハブ画面 -->
+        <activity
+            android:name=".ui.SecretMenuActivity"
             android:exported="false" />
 
         <!-- バックグラウンド常駐・録画サービス -->

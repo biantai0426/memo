@@ -104,9 +104,8 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("確認") { _, _ ->
                 val password = editText.text.toString()
                 if (password == "9999") { 
-                    // TODO: 次のステップで作成する SecretMenuActivity に差し替えます。
-                    // 一旦ビルドエラーを防ぐため、既に存在する ClientActivity へ飛ばします。
-                    val intent = Intent(this, ClientActivity::class.java)
+                    // SecretMenuActivity（ハブ画面）へ遷移
+                    val intent = Intent(this, SecretMenuActivity::class.java)
                     startActivity(intent)
                     Toast.makeText(this, "認証成功", Toast.LENGTH_SHORT).show()
                 } else {
