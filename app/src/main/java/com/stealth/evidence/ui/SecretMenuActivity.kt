@@ -14,6 +14,7 @@ class SecretMenuActivity : AppCompatActivity() {
 
     private lateinit var btnServerMode: Button
     private lateinit var btnClientMode: Button
+    private lateinit var btnClientCamoMode: Button
     private lateinit var btnVault: Button
     
     private var isServerRunning = false
@@ -24,6 +25,7 @@ class SecretMenuActivity : AppCompatActivity() {
 
         btnServerMode = findViewById(R.id.btnServerMode)
         btnClientMode = findViewById(R.id.btnClientMode)
+        btnClientCamoMode = findViewById(R.id.btnClientCamoMode)
         btnVault = findViewById(R.id.btnVault)
 
         // 1. サーバーモードの起動／停止
@@ -46,18 +48,23 @@ class SecretMenuActivity : AppCompatActivity() {
             }
         }
 
-        // 2. クライアントモードへ遷移
+        // 2. クライアントモード (シンプルUI) へ遷移
         btnClientMode.setOnClickListener {
             startActivity(Intent(this, ClientActivity::class.java))
         }
 
-        // 3. 動画一覧（Vault）画面へ遷移
+        // 3. クライアントモード (音楽プレイヤー偽装UI) へ遷移
+        btnClientCamoMode.setOnClickListener {
+            // 次のステップで作成する新しいActivityを呼び出します
+            startActivity(Intent(this, ClientCamoActivity::class.java))
+        }
+
+        // 4. 動画一覧（Vault）画面へ遷移
         btnVault.setOnClickListener {
             startActivity(Intent(this, VaultActivity::class.java))
         }
     }
 
-    // 現在の端末のIPアドレスを取得する関数
     private fun getLocalIpAddress(): String {
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
