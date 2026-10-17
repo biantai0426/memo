@@ -8,7 +8,6 @@ import android.widget.Button
 import android.widget.Switch
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
 import com.stealth.evidence.R
 import java.io.IOException
 import okhttp3.Call
@@ -26,7 +25,6 @@ class ClientActivity : AppCompatActivity() {
     private lateinit var sendNotificationButton: Button
     private lateinit var webView: WebView
 
-    private var lensFacing = CameraSelector.LENS_FACING_BACK
     private val httpClient = OkHttpClient()
     private val serverBaseUrl = "http://127.0.0.1:8080"
     private val streamUrl = "$serverBaseUrl/stream"
@@ -51,11 +49,10 @@ class ClientActivity : AppCompatActivity() {
         }
         webView.setBackgroundColor(0) // 背景を黒/透明に
 
-        // 1. プレビューのON/OFF（サーバーからのMJPEGストリームを受信）
+        // 1. プレビューのON/OFF（サーバーからのライブ監視ストリームを受信）
         previewToggleSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 webView.visibility = View.VISIBLE
-                // imgタグを使ってストリームURLを読み込む（綺麗にフィットさせるためHTMLでラップ）
                 val html = "<html><body style='margin:0;padding:0;background-color:black;display:flex;justify-content:center;align-items:center;'><img src='$streamUrl' width='100%' /></body></html>"
                 webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
             } else {
@@ -64,34 +61,26 @@ class ClientActivity : AppCompatActivity() {
             }
         }
 
-        // 2. 内カメラ / 外カメラ切替（次回録画開始時に適用）
+        // 2. 内カメラ / 外カメラ切替（サーバーの /switch を叩く）
         switchCameraButton.setOnClickListener {
-            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                CameraSelector.LENS_FACING_FRONT
-            } else {
-                CameraSelector.LENS_FACING_BACK
-            }
-            val facingStr = if (lensFacing == CameraSelector.LENS_FACING_FRONT) "内カメ(前面)" else "外カメ(背面)"
-            Toast.makeText(this, "次回録画から $facingStr に切り替わります", Toast.LENGTH_SHORT).show()
-        }
-
-        // 3. 録画開始（サーバーの /start を叩く）
-        startRecordButton.setOnClickListener {
-            val facingStr = if (lensFacing == CameraSelector.LENS_FACING_FRONT) "front" else "back"
-            sendServerRequest("$serverBaseUrl/start?facing=$facingStr", "遠隔録画を開始しました ($facingStr)")
-            
-            // 録画が開始されてから映像が生成されるまで少し待って、プレビューをリロード
+            sendServerRequest("$serverBaseUrl/switch", "カメラの向きを切り替えました")
+            // 切り替え直後は映像が止まる可能性があるため、プレビュー表示中なら少し待ってリロード
             if (previewToggleSwitch.isChecked) {
                 webView.postDelayed({
                     val html = "<html><body style='margin:0;padding:0;background-color:black;display:flex;justify-content:center;align-items:center;'><img src='$streamUrl' width='100%' /></body></html>"
                     webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-                }, 1000)
+                }, 1500)
             }
         }
 
-        // 4. 録画停止（サーバーの /stop を叩く）
+        // 3. 録画（Vaultへの保存）開始（サーバーの /start を叩く）
+        startRecordButton.setOnClickListener {
+            sendServerRequest("$serverBaseUrl/start", "Vaultへの証拠保存を開始しました")
+        }
+
+        // 4. 録画（Vaultへの保存）停止（サーバーの /stop を叩く）
         stopRecordButton.setOnClickListener {
-            sendServerRequest("$serverBaseUrl/stop", "遠隔録画を停止しました")
+            sendServerRequest("$serverBaseUrl/stop", "Vaultへの証拠保存を停止しました")
         }
 
         // 5. ダミー通知送信（サーバーの /notify を叩く）

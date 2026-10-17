@@ -10,30 +10,40 @@
         android:id="@+id/previewToggleSwitch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="プレビュー表示 (サーバー経由ストリーミング)"
+        android:text="ライブ監視プレビューを表示"
         android:textColor="#FFFFFF"
+        android:textSize="18sp"
         android:layout_marginBottom="16dp" />
+
+    <!-- 映像受信用のウェブビュー（上部に配置して見やすく） -->
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="250dp"
+        android:background="#000000"
+        android:visibility="gone"
+        android:layout_marginBottom="24dp" />
 
     <Button
         android:id="@+id/switchCameraButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="カメラ切替 (次回録画時に反映)"
-        android:layout_marginBottom="8dp" />
+        android:text="カメラ向き 切替 (内/外)"
+        android:layout_marginBottom="12dp" />
 
     <Button
         android:id="@+id/startRecordButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="遠隔録画 開始"
-        android:layout_marginBottom="8dp" />
+        android:text="証拠保存（Vaultへ録画） 開始"
+        android:layout_marginBottom="12dp" />
 
     <Button
         android:id="@+id/stopRecordButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="遠隔録画 停止"
-        android:layout_marginBottom="8dp" />
+        android:text="証拠保存（Vaultへ録画） 停止"
+        android:layout_marginBottom="12dp" />
 
     <Button
         android:id="@+id/sendNotificationButton"
@@ -41,13 +51,5 @@
         android:layout_height="wrap_content"
         android:text="カモフラージュ通知 送信"
         android:layout_marginBottom="16dp" />
-
-    <!-- 映像受信用のウェブビュー -->
-    <WebView
-        android:id="@+id/webView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#000000"
-        android:visibility="gone" />
 
 </LinearLayout>
