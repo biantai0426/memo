@@ -58,16 +58,13 @@
             android:layout_height="320dp"
             android:layout_marginBottom="32dp">
 
-            <!-- 偽装用ジャケット（デフォルトは音符アイコン） -->
-            <TextView
+            <!-- 偽装用ジャケット（Apple Musicから画像を取得して表示） -->
+            <ImageView
                 android:id="@+id/imgJacket"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="#222222"
-                android:text="🎵"
-                android:textColor="#555555"
-                android:textSize="100sp"
-                android:gravity="center" />
+                android:scaleType="centerCrop" />
 
             <!-- ストリーミング画面（初期は非表示） -->
             <WebView
@@ -78,8 +75,9 @@
                 android:visibility="gone" />
         </FrameLayout>
 
-        <!-- 曲名・アーティスト名（ダミー） -->
+        <!-- 曲名・アーティスト名（動的に変更するためIDを追加） -->
         <TextView
+            android:id="@+id/tvTrackTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="なんもねえ"
@@ -89,6 +87,7 @@
             android:layout_marginBottom="4dp" />
 
         <TextView
+            android:id="@+id/tvTrackArtist"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="忘れらんねえよ"
@@ -96,7 +95,7 @@
             android:textSize="16sp"
             android:layout_marginBottom="24dp" />
 
-        <!-- シークバー（ダミー。再生中は少しずつ進むようにプログラム側で動かします） -->
+        <!-- シークバー -->
         <ProgressBar
             android:id="@+id/progressBarCamo"
             style="?android:attr/progressBarStyleHorizontal"
@@ -105,7 +104,7 @@
             android:progress="0"
             android:layout_marginBottom="24dp" />
 
-        <!-- 再生コントローラー（ここが実際の操作ボタン） -->
+        <!-- 再生コントローラー -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -164,17 +163,16 @@
         app:behavior_hideable="false"
         app:behavior_peekHeight="60dp">
 
-        <!-- 引き出し用のハンドル部分（ミックスリスト偽装） -->
         <TextView
+            android:id="@+id/tvMixListTitle"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:text="━\n「なんもねえ」を元にしたミックスリスト"
+            android:text="━\nミックスリスト"
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             android:gravity="center"
             android:background="#333333" />
 
-        <!-- 実際の遠隔動画ダウンロードリスト -->
         <ListView
             android:id="@+id/lvVaultCamo"
             android:layout_width="match_parent"

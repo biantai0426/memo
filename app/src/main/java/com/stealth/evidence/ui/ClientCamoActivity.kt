@@ -3,6 +3,7 @@ package com.stealth.evidence.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.webkit.WebView
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -27,16 +29,21 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 class ClientCamoActivity : AppCompatActivity() {
 
     private lateinit var tvTargetIpCamo: TextView
     private lateinit var btnConfigIpCamo: TextView
     private lateinit var jacketContainer: FrameLayout
-    private lateinit var imgJacket: TextView
+    private lateinit var imgJacket: ImageView
     private lateinit var webViewCamo: WebView
+    private lateinit var tvTrackTitle: TextView
+    private lateinit var tvTrackArtist: TextView
+    private lateinit var tvMixListTitle: TextView
     private lateinit var progressBarCamo: ProgressBar
     private lateinit var btnPrevCamo: TextView
     private lateinit var btnPlayPauseCamo: TextView
@@ -48,8 +55,8 @@ class ClientCamoActivity : AppCompatActivity() {
 
     private var isRecording = false
     private var isPreviewVisible = false
+    private var currentTrackName = "なんもねえ"
 
-    // シークバーを動かすためのタイマー（録画中＝再生中）
     private val handler = Handler(Looper.getMainLooper())
     private var progressValue = 0
     private val progressRunnable = object : Runnable {
@@ -72,6 +79,9 @@ class ClientCamoActivity : AppCompatActivity() {
         jacketContainer = findViewById(R.id.jacketContainer)
         imgJacket = findViewById(R.id.imgJacket)
         webViewCamo = findViewById(R.id.webViewCamo)
+        tvTrackTitle = findViewById(R.id.tvTrackTitle)
+        tvTrackArtist = findViewById(R.id.tvTrackArtist)
+        tvMixListTitle = findViewById(R.id.tvMixListTitle)
         progressBarCamo = findViewById(R.id.progressBarCamo)
         btnPrevCamo = findViewById(R.id.btnPrevCamo)
         btnPlayPauseCamo = findViewById(R.id.btnPlayPauseCamo)
@@ -85,16 +95,14 @@ class ClientCamoActivity : AppCompatActivity() {
         }
         webViewCamo.setBackgroundColor(0)
 
-        // IP手動設定ダイアログ表示
-        btnConfigIpCamo.setOnClickListener {
-            showIpConfigDialog()
-        }
+        // Apple Musicから最新のトレンド曲を取得してUIを偽装
+        fetchAppleMusicData()
 
-        // ★修正：ジャケット領域を「押している間」だけプレビューを表示する処理
+        btnConfigIpCamo.setOnClickListener { showIpConfigDialog() }
+
         jacketContainer.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // 指が触れた瞬間（表示する）
                     isPreviewVisible = true
                     imgJacket.visibility = View.GONE
                     webViewCamo.visibility = View.VISIBLE
@@ -102,7 +110,6 @@ class ClientCamoActivity : AppCompatActivity() {
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    // 指を離した瞬間、または枠外にそれた瞬間（隠す）
                     isPreviewVisible = false
                     imgJacket.visibility = View.VISIBLE
                     webViewCamo.visibility = View.GONE
@@ -113,21 +120,17 @@ class ClientCamoActivity : AppCompatActivity() {
             }
         }
 
-        // 戻るボタン(⏮)：内カメ/外カメの切り替え
         btnPrevCamo.setOnClickListener {
             sendServerRequest("$targetUrl/switch")
-            if (isPreviewVisible) {
-                webViewCamo.postDelayed({ reloadStream() }, 1500)
-            }
+            if (isPreviewVisible) webViewCamo.postDelayed({ reloadStream() }, 1500)
         }
 
-        // 再生ボタン(▶)：録画の開始/停止
         btnPlayPauseCamo.setOnClickListener {
             isRecording = !isRecording
             if (isRecording) {
                 btnPlayPauseCamo.text = "⏸"
                 sendServerRequest("$targetUrl/start")
-                handler.post(progressRunnable) // ダミーでシークバーを進める
+                handler.post(progressRunnable)
             } else {
                 btnPlayPauseCamo.text = "▶"
                 sendServerRequest("$targetUrl/stop")
@@ -135,13 +138,75 @@ class ClientCamoActivity : AppCompatActivity() {
             }
         }
 
-        // 次へボタン(⏭)：カモフラージュ通知送信（画面点灯）
-        btnNextCamo.setOnClickListener {
-            sendServerRequest("$targetUrl/notify")
-        }
+        btnNextCamo.setOnClickListener { sendServerRequest("$targetUrl/notify") }
 
-        // 起動時に自動で現場端末のIPをスキャン
         autoScanServer()
+    }
+
+    // 匿名でApple Musicの公開RSSを取得し、本物の曲データでカモフラージュする
+    private fun fetchAppleMusicData() {
+        val url = "https://itunes.apple.com/jp/rss/topsongs/limit=20/json"
+        val request = Request.Builder().url(url).build()
+        
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                // オフライン時はXMLに定義したデフォルトのまま（何もしない）
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val jsonStr = response.body?.string() ?: return
+                    val jsonObject = JSONObject(jsonStr)
+                    val entries = jsonObject.getJSONObject("feed").getJSONArray("entry")
+                    
+                    if (entries.length() > 0) {
+                        // 20曲の中からランダムに1曲選ぶ
+                        val randomIndex = Random.nextInt(entries.length())
+                        val entry = entries.getJSONObject(randomIndex)
+                        
+                        val title = entry.getJSONObject("im:name").getString("label")
+                        val artist = entry.getJSONObject("im:artist").getString("label")
+                        
+                        // 画像URLの取得（一番大きいサイズのものを選択）
+                        val images = entry.getJSONArray("im:image")
+                        val imageUrl = images.getJSONObject(images.length() - 1).getString("label")
+                        
+                        currentTrackName = title
+
+                        runOnUiThread {
+                            tvTrackTitle.text = title
+                            tvTrackArtist.text = artist
+                            tvMixListTitle.text = "━\n「$title」を元にしたミックスリスト"
+                        }
+                        
+                        // 画像のダウンロードと適用
+                        downloadAndSetImage(imageUrl)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        })
+    }
+
+    private fun downloadAndSetImage(imageUrl: String) {
+        val request = Request.Builder().url(imageUrl).build()
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {}
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val inputStream = response.body?.byteStream()
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    if (bitmap != null) {
+                        runOnUiThread {
+                            imgJacket.setImageBitmap(bitmap)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        })
     }
 
     private fun reloadStream() {
@@ -163,25 +228,19 @@ class ClientCamoActivity : AppCompatActivity() {
             .setView(input)
             .setPositiveButton("接続") { _, _ ->
                 val ip = input.text.toString().trim()
-                if (ip.isNotEmpty()) {
-                    setTargetIp(ip)
-                }
+                if (ip.isNotEmpty()) setTargetIp(ip)
             }
-            .setNeutralButton("再スキャン") { _, _ ->
-                autoScanServer()
-            }
+            .setNeutralButton("再スキャン") { _, _ -> autoScanServer() }
             .setNegativeButton("キャンセル", null)
             .show()
     }
 
     private fun setTargetIp(ip: String) {
         targetUrl = "http://$ip:8080"
-        tvTargetIpCamo.text = "♪" // 接続成功時は小さく表示
+        tvTargetIpCamo.text = "♪" 
         Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
-        fetchVideoList() // ボトムシート用のリストを取得
-        if (isPreviewVisible) {
-            reloadStream()
-        }
+        fetchVideoList()
+        if (isPreviewVisible) reloadStream()
     }
 
     private fun autoScanServer() {
@@ -197,9 +256,7 @@ class ClientCamoActivity : AppCompatActivity() {
                     possibleIps.add(0, gatewayIp)
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
 
         Thread {
             var found = false
@@ -249,10 +306,10 @@ class ClientCamoActivity : AppCompatActivity() {
                         for (i in 0 until jsonArray.length()) {
                             val obj = jsonArray.getJSONObject(i)
                             val name = obj.getString("name")
-                            val date = obj.getString("date")
                             val sizeMb = obj.getLong("size") / (1024 * 1024)
                             fileNames.add(name)
-                            displayItems.add("Track ${i+1}: $date (${sizeMb}MB)")
+                            // 音楽のプレイリストっぽく偽装
+                            displayItems.add("Track ${i+1} : $currentTrackName - Remix (${sizeMb}MB)")
                         }
                         
                         val adapter = ArrayAdapter(this@ClientCamoActivity, android.R.layout.simple_list_item_1, displayItems)
