@@ -38,9 +38,14 @@
             android:name=".ui.ClientActivity"
             android:exported="false" />
 
-        <!-- 追加：秘密のコントロールハブ画面 -->
+        <!-- 秘密のコントロールハブ画面 -->
         <activity
             android:name=".ui.SecretMenuActivity"
+            android:exported="false" />
+
+        <!-- 追加：シークレット動画金庫（Vault）画面 -->
+        <activity
+            android:name=".ui.VaultActivity"
             android:exported="false" />
 
         <!-- バックグラウンド常駐・録画サービス -->

@@ -17,9 +17,9 @@ class SecretMenuActivity : AppCompatActivity() {
             startActivity(Intent(this, ClientActivity::class.java))
         }
 
-        // 動画金庫へ遷移（今後のステップで実装）
+        // 動画金庫（Vault）へ遷移
         findViewById<Button>(R.id.btnVideoVault).setOnClickListener {
-            Toast.makeText(this, "シークレット動画金庫を開きます（今後実装）", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, VaultActivity::class.java))
         }
 
         // 自爆コマンド（今後のステップで実装）
