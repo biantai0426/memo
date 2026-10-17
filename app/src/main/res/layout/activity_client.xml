@@ -1,77 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
-    android:background="#121212">
+    android:background="#121212"
+    android:padding="16dp">
 
-    <!-- プレビュー表示のON/OFFスイッチ -->
     <Switch
         android:id="@+id/previewToggleSwitch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="カメラプレビューを表示"
+        android:text="プレビュー表示 (サーバー経由ストリーミング)"
         android:textColor="#FFFFFF"
-        android:textSize="16sp"
         android:layout_marginBottom="16dp" />
 
-    <!-- カメラ切り替えボタン -->
     <Button
         android:id="@+id/switchCameraButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="内カメラ / 外カメラ 切替"
+        android:text="カメラ切替 (次回録画時に反映)"
         android:layout_marginBottom="8dp" />
 
-    <!-- 録画の開始・停止ボタン（横並び） -->
-    <LinearLayout
+    <Button
+        android:id="@+id/startRecordButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="8dp">
+        android:text="遠隔録画 開始"
+        android:layout_marginBottom="8dp" />
 
-        <Button
-            android:id="@+id/startRecordButton"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:text="録画開始"
-            android:layout_marginEnd="4dp" />
+    <Button
+        android:id="@+id/stopRecordButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="遠隔録画 停止"
+        android:layout_marginBottom="8dp" />
 
-        <Button
-            android:id="@+id/stopRecordButton"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:text="録画停止"
-            android:layout_marginStart="4dp" />
-    </LinearLayout>
-
-    <!-- ダミー通知送信ボタン -->
     <Button
         android:id="@+id/sendNotificationButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="ダミー通知送信 (同期を開始しました)"
+        android:text="カモフラージュ通知 送信"
         android:layout_marginBottom="16dp" />
 
-    <!-- プレビュー表示エリア（クリップせずアスペクト比を維持） -->
-    <FrameLayout
+    <!-- 映像受信用のウェブビュー -->
+    <WebView
+        android:id="@+id/webView"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#000000">
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone" />
 
-        <!-- app:scaleType="fitCenter" で映像の切り抜きを防ぎ元のサイズ比率で表示 -->
-        <androidx.camera.view.PreviewView
-            android:id="@+id/viewFinder"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            app:scaleType="fitCenter"
-            android:visibility="gone" /> 
-            <!-- 初期状態は visibility="gone" (非表示) -->
-            
-    </FrameLayout>
 </LinearLayout>
