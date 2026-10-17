@@ -16,12 +16,24 @@
         android:padding="16dp"
         android:background="#1A1A1A" />
 
-    <!-- 暗号化ファイル（.dat）の一覧リスト -->
+    <!-- 🚨 自爆ボタン（誤爆防止のため長押しで発動するようにコードで制御） 🚨 -->
+    <Button
+        android:id="@+id/btnSelfDestruct"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🚨 長押しで自爆（全データ完全消去）🚨"
+        android:backgroundTint="#8B0000"
+        android:textColor="#FFFFFF"
+        android:layout_alignParentBottom="true"
+        android:layout_margin="16dp" />
+
+    <!-- 暗号化ファイル一覧リスト -->
     <ListView
         android:id="@+id/vaultListView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/vaultTitle"
+        android:layout_above="@id/btnSelfDestruct"
         android:divider="#2A2A2A"
         android:dividerHeight="1dp" />
 

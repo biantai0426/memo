@@ -26,7 +26,6 @@ class SecretMenuActivity : AppCompatActivity() {
         // 1. サーバーモードの起動／停止
         btnServerMode.setOnClickListener {
             if (!isServerRunning) {
-                // 第2弾で本格実装するサーバー起動命令を投げる
                 val intent = Intent(this, StealthCameraService::class.java).apply {
                     action = StealthCameraService.ACTION_START_STANDBY
                 }
@@ -47,9 +46,9 @@ class SecretMenuActivity : AppCompatActivity() {
             startActivity(Intent(this, ClientActivity::class.java))
         }
 
-        // 3. 動画一覧（Vault）画面へ遷移
+        // 3. 動画一覧（Vault）画面へ遷移（修正箇所）
         btnVault.setOnClickListener {
-            startActivity(Intent(this, VideoListActivity::class.java))
+            startActivity(Intent(this, VaultActivity::class.java))
         }
     }
 }

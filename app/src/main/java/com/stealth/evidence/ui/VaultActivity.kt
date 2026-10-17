@@ -21,7 +21,7 @@ class VaultActivity : AppCompatActivity() {
     private lateinit var videoPlayerContainer: RelativeLayout
     private lateinit var videoView: VideoView
     private lateinit var btnCloseVideo: Button
-    
+    private lateinit var btnSelfDestruct: Button
     private var currentPlaybackFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,17 +33,31 @@ class VaultActivity : AppCompatActivity() {
         videoPlayerContainer = findViewById(R.id.videoPlayerContainer)
         videoView = findViewById(R.id.videoView)
         btnCloseVideo = findViewById(R.id.btnCloseVideo)
+        btnSelfDestruct = findViewById(R.id.btnSelfDestruct)
 
-        // 動画プレイヤーのコントローラー（再生/一時停止/シークバー）を設定
         val mediaController = MediaController(this)
         mediaController.setAnchorView(videoView)
         videoView.setMediaController(mediaController)
 
         loadVaultFiles()
 
-        // 閉じるボタンでプレイヤーを隠し、一時ファイルを削除
         btnCloseVideo.setOnClickListener {
             closeVideoPlayer()
+        }
+
+        // 🚨 自爆ボタン（誤操作を防ぐため長押しで発動） 🚨
+        btnSelfDestruct.setOnLongClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("🚨 最終警告 🚨")
+                .setMessage("Vault内の全ての証拠データを完全に破壊（ゼロ埋め消去）します。元には戻せません。本当に実行しますか？")
+                .setPositiveButton("完全消去を実行") { _, _ ->
+                    vaultManager.executeSelfDestruct()
+                    loadVaultFiles() // リストを空に更新
+                    Toast.makeText(this, "全ての証拠データを完全に破壊しました", Toast.LENGTH_LONG).show()
+                }
+                .setNegativeButton("キャンセル", null)
+                .show()
+            true
         }
     }
 
@@ -51,7 +65,6 @@ class VaultActivity : AppCompatActivity() {
         val files = vaultManager.getVaultFiles()
         val fileNames = files.map { it.name }
 
-        // ダークテーマ用のカスタムレイアウトを適用
         val adapter = ArrayAdapter(
             this,
             R.layout.item_vault_file,
@@ -64,8 +77,8 @@ class VaultActivity : AppCompatActivity() {
             val selectedFile = files[position]
             playVideo(selectedFile)
         }
-        
-        // 長押しでファイルの削除ダイアログ
+
+        // 長押しでファイルの個別削除
         vaultListView.setOnItemLongClickListener { _, _, position, _ ->
             val selectedFile = files[position]
             AlertDialog.Builder(this)
@@ -74,7 +87,7 @@ class VaultActivity : AppCompatActivity() {
                 .setPositiveButton("削除") { _, _ ->
                     selectedFile.delete()
                     Toast.makeText(this, "削除しました", Toast.LENGTH_SHORT).show()
-                    loadVaultFiles() // リストを更新
+                    loadVaultFiles()
                 }
                 .setNegativeButton("キャンセル", null)
                 .show()
@@ -84,11 +97,9 @@ class VaultActivity : AppCompatActivity() {
 
     private fun playVideo(datFile: File) {
         Toast.makeText(this, "復号化中...", Toast.LENGTH_SHORT).show()
-        
-        // UIがフリーズしないように別スレッドでXOR復号を実行
+
         Thread {
             val decryptedFile = vaultManager.decryptVideoFile(datFile)
-            
             runOnUiThread {
                 if (decryptedFile != null && decryptedFile.exists()) {
                     currentPlaybackFile = decryptedFile
@@ -105,8 +116,7 @@ class VaultActivity : AppCompatActivity() {
     private fun closeVideoPlayer() {
         videoView.stopPlayback()
         videoPlayerContainer.visibility = View.GONE
-        
-        // 再生が終わったら一時ファイルを確実に削除（証拠隠滅）
+
         currentPlaybackFile?.let {
             if (it.exists()) {
                 it.delete()
@@ -115,18 +125,16 @@ class VaultActivity : AppCompatActivity() {
         currentPlaybackFile = null
     }
 
-    // スマホの「戻る」ボタンを押したときの処理
     override fun onBackPressed() {
         if (videoPlayerContainer.visibility == View.VISIBLE) {
-            closeVideoPlayer() // プレイヤー表示中なら閉じるだけ
+            closeVideoPlayer()
         } else {
-            super.onBackPressed() // 通常の戻る動作
+            super.onBackPressed()
         }
     }
-    
-    // アプリが裏に回ったり閉じられたりした際の安全対策
+
     override fun onDestroy() {
         super.onDestroy()
-        closeVideoPlayer() 
+        closeVideoPlayer()
     }
 }
