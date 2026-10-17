@@ -8,6 +8,7 @@ import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebView
 import android.widget.ArrayAdapter
@@ -61,7 +62,7 @@ class ClientCamoActivity : AppCompatActivity() {
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_client_camo)
@@ -89,17 +90,26 @@ class ClientCamoActivity : AppCompatActivity() {
             showIpConfigDialog()
         }
 
-        // ジャケット領域タップ：プレビューのON/OFF
-        jacketContainer.setOnClickListener {
-            isPreviewVisible = !isPreviewVisible
-            if (isPreviewVisible) {
-                imgJacket.visibility = View.GONE
-                webViewCamo.visibility = View.VISIBLE
-                reloadStream()
-            } else {
-                imgJacket.visibility = View.VISIBLE
-                webViewCamo.visibility = View.GONE
-                webViewCamo.loadUrl("about:blank")
+        // ★修正：ジャケット領域を「押している間」だけプレビューを表示する処理
+        jacketContainer.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 指が触れた瞬間（表示する）
+                    isPreviewVisible = true
+                    imgJacket.visibility = View.GONE
+                    webViewCamo.visibility = View.VISIBLE
+                    reloadStream()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    // 指を離した瞬間、または枠外にそれた瞬間（隠す）
+                    isPreviewVisible = false
+                    imgJacket.visibility = View.VISIBLE
+                    webViewCamo.visibility = View.GONE
+                    webViewCamo.loadUrl("about:blank")
+                    true
+                }
+                else -> false
             }
         }
 
@@ -215,7 +225,6 @@ class ClientCamoActivity : AppCompatActivity() {
         }.start()
     }
 
-    // 偽装画面のため、エラーのToastなどは出さない
     private fun sendServerRequest(url: String) {
         val request = Request.Builder().url(url).build()
         httpClient.newCall(request).enqueue(object : Callback {
@@ -224,7 +233,6 @@ class ClientCamoActivity : AppCompatActivity() {
         })
     }
 
-    // ボトムシート用の動画リスト取得
     private fun fetchVideoList() {
         val request = Request.Builder().url("$targetUrl/videos").build()
         httpClient.newCall(request).enqueue(object : Callback {
@@ -244,15 +252,12 @@ class ClientCamoActivity : AppCompatActivity() {
                             val date = obj.getString("date")
                             val sizeMb = obj.getLong("size") / (1024 * 1024)
                             fileNames.add(name)
-                            // 音楽の曲名っぽく偽装して表示
                             displayItems.add("Track ${i+1}: $date (${sizeMb}MB)")
                         }
                         
-                        // ダークテーマ用のシンプルなリストレイアウトを利用（今回は標準を利用）
                         val adapter = ArrayAdapter(this@ClientCamoActivity, android.R.layout.simple_list_item_1, displayItems)
                         lvVaultCamo.adapter = adapter
                         
-                        // タップでダウンロード
                         lvVaultCamo.setOnItemClickListener { _, _, position, _ ->
                             val downloadUrl = "$targetUrl/download?name=${fileNames[position]}"
                             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
