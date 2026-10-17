@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit
 class ClientCamoActivity : AppCompatActivity() {
 
     private lateinit var tvTargetIpCamo: TextView
+    private lateinit var btnConfigIpCamo: TextView
     private lateinit var jacketContainer: FrameLayout
     private lateinit var imgJacket: TextView
     private lateinit var webViewCamo: WebView
@@ -40,14 +41,14 @@ class ClientCamoActivity : AppCompatActivity() {
     private lateinit var btnPlayPauseCamo: TextView
     private lateinit var btnNextCamo: TextView
     private lateinit var lvVaultCamo: ListView
-    private lateinit var tvSongTitle: TextView // 隠しトリガー用
 
     private val httpClient = OkHttpClient()
-    private var targetUrl = "http://192.168.43.1:8080" // デフォルト
+    private var targetUrl = "http://127.0.0.1:8080"
 
     private var isRecording = false
     private var isPreviewVisible = false
 
+    // シークバーを動かすためのタイマー（録画中＝再生中）
     private val handler = Handler(Looper.getMainLooper())
     private var progressValue = 0
     private val progressRunnable = object : Runnable {
@@ -66,6 +67,7 @@ class ClientCamoActivity : AppCompatActivity() {
         setContentView(R.layout.activity_client_camo)
 
         tvTargetIpCamo = findViewById(R.id.tvTargetIpCamo)
+        btnConfigIpCamo = findViewById(R.id.btnConfigIpCamo)
         jacketContainer = findViewById(R.id.jacketContainer)
         imgJacket = findViewById(R.id.imgJacket)
         webViewCamo = findViewById(R.id.webViewCamo)
@@ -75,13 +77,6 @@ class ClientCamoActivity : AppCompatActivity() {
         btnNextCamo = findViewById(R.id.btnNextCamo)
         lvVaultCamo = findViewById(R.id.lvVaultCamo)
 
-        // 曲名ラベル（「なんもねえ」の部分）を取得
-        tvSongTitle = findViewById(R.id.tvSongTitle) ?: run {
-            // 万が一レイアウト側にIDがない場合の安全策としてレイアウト側を更新するコードを追加しなくてもいいように
-            // ここではダミーとして直接見つからない場合の処理をしておきます
-            findViewById<TextView>(android.R.id.text1)
-        }
-
         webViewCamo.settings.apply {
             javaScriptEnabled = true
             loadWithOverviewMode = true
@@ -89,11 +84,10 @@ class ClientCamoActivity : AppCompatActivity() {
         }
         webViewCamo.setBackgroundColor(0)
 
-        // 🎵 【隠し機能】曲名（「なんもねえ」）の文字を長押しすると、IP手動設定ダイアログが起動します！
-        val titleView = findViewById<View>(android.R.id.content).findViewById<TextView>(R.id.tvTargetIpCamo).parent as? View
-        // 代わりに画面上の曲名テキストビューを安全に見つけるため、直接リスナーを仕込みます
-        // ※レイアウト内の「なんもねえ」と書かれたTextViewを長押しできるようにします
-        setupLongClickForIpConfig()
+        // IP手動設定ダイアログ表示
+        btnConfigIpCamo.setOnClickListener {
+            showIpConfigDialog()
+        }
 
         // ジャケット領域タップ：プレビューのON/OFF
         jacketContainer.setOnClickListener {
@@ -123,7 +117,7 @@ class ClientCamoActivity : AppCompatActivity() {
             if (isRecording) {
                 btnPlayPauseCamo.text = "⏸"
                 sendServerRequest("$targetUrl/start")
-                handler.post(progressRunnable)
+                handler.post(progressRunnable) // ダミーでシークバーを進める
             } else {
                 btnPlayPauseCamo.text = "▶"
                 sendServerRequest("$targetUrl/stop")
@@ -136,30 +130,16 @@ class ClientCamoActivity : AppCompatActivity() {
             sendServerRequest("$targetUrl/notify")
         }
 
+        // 起動時に自動で現場端末のIPをスキャン
         autoScanServer()
     }
 
-    // 曲名部分を長押ししたときにIP設定ダイアログを開く隠しギミック
-    private fun setupLongClickForIpConfig() {
-        // 画面内のすべてのTextViewを走査し、「なんもねえ」というテキストを持つものを探して長押しを有効にする
-        val rootView = findViewById<View>(android.R.id.content)
-        findAndSetLongClick(rootView)
+    private fun reloadStream() {
+        val streamUrl = "$targetUrl/stream"
+        val html = "<html><body style='margin:0;padding:0;background-color:black;display:flex;justify-content:center;align-items:center;'><img src='$streamUrl' width='100%' /></body></html>"
+        webViewCamo.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
     }
 
-    private fun findAndSetLongClick(view: View) {
-        if (view is android.view.ViewGroup) {
-            for (i in 0 until view.childCount) {
-                findAndSetLongClick(view.getChildAt(i))
-            }
-        } else if (view is TextView && view.text.toString() == "なんもねえ") {
-            view.setOnLongClickListener {
-                showIpConfigDialog()
-                true
-            }
-        }
-    }
-
-    // IP手動設定ダイアログ
     private fun showIpConfigDialog() {
         val input = EditText(this).apply {
             hint = "例: 192.168.43.1"
@@ -168,16 +148,13 @@ class ClientCamoActivity : AppCompatActivity() {
         }
 
         AlertDialog.Builder(this)
-            .setTitle("IPアドレスの手動設定")
-            .setMessage("現場端末の画面に表示されているIPアドレスを入力してください。")
+            .setTitle("接続先IPアドレス設定")
+            .setMessage("現場端末のIPを入力してください")
             .setView(input)
             .setPositiveButton("接続") { _, _ ->
                 val ip = input.text.toString().trim()
                 if (ip.isNotEmpty()) {
-                    targetUrl = "http://$ip:8080"
-                    Toast.makeText(this, "接続先を $ip に変更しました", Toast.LENGTH_SHORT).show()
-                    fetchVideoList()
-                    if (isPreviewVisible) reloadStream()
+                    setTargetIp(ip)
                 }
             }
             .setNeutralButton("再スキャン") { _, _ ->
@@ -187,10 +164,14 @@ class ClientCamoActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun reloadStream() {
-        val streamUrl = "$targetUrl/stream"
-        val html = "<html><body style='margin:0;padding:0;background-color:black;display:flex;justify-content:center;align-items:center;'><img src='$streamUrl' width='100%' /></body></html>"
-        webViewCamo.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    private fun setTargetIp(ip: String) {
+        targetUrl = "http://$ip:8080"
+        tvTargetIpCamo.text = "♪" // 接続成功時は小さく表示
+        Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
+        fetchVideoList() // ボトムシート用のリストを取得
+        if (isPreviewVisible) {
+            reloadStream()
+        }
     }
 
     private fun autoScanServer() {
@@ -223,26 +204,18 @@ class ClientCamoActivity : AppCompatActivity() {
                     val response = testClient.newCall(req).execute()
                     if (response.isSuccessful) {
                         found = true
-                        runOnUiThread {
-                            targetUrl = "http://$ip:8080"
-                            tvTargetIpCamo.text = "♪"
-                            fetchVideoList()
-                            if (isPreviewVisible) reloadStream()
-                        }
+                        runOnUiThread { setTargetIp(ip) }
                         break
                     }
                 } catch (e: Exception) {}
             }
             if (!found) {
-                runOnUiThread {
-                    tvTargetIpCamo.text = "♪ 未接続"
-                    // 自動スキャンで見つからない場合は自動で手動入力ダイアログを開く
-                    showIpConfigDialog()
-                }
+                runOnUiThread { tvTargetIpCamo.text = "♪ 接続待機" }
             }
         }.start()
     }
 
+    // 偽装画面のため、エラーのToastなどは出さない
     private fun sendServerRequest(url: String) {
         val request = Request.Builder().url(url).build()
         httpClient.newCall(request).enqueue(object : Callback {
@@ -251,6 +224,7 @@ class ClientCamoActivity : AppCompatActivity() {
         })
     }
 
+    // ボトムシート用の動画リスト取得
     private fun fetchVideoList() {
         val request = Request.Builder().url("$targetUrl/videos").build()
         httpClient.newCall(request).enqueue(object : Callback {
@@ -270,12 +244,15 @@ class ClientCamoActivity : AppCompatActivity() {
                             val date = obj.getString("date")
                             val sizeMb = obj.getLong("size") / (1024 * 1024)
                             fileNames.add(name)
+                            // 音楽の曲名っぽく偽装して表示
                             displayItems.add("Track ${i+1}: $date (${sizeMb}MB)")
                         }
                         
+                        // ダークテーマ用のシンプルなリストレイアウトを利用（今回は標準を利用）
                         val adapter = ArrayAdapter(this@ClientCamoActivity, android.R.layout.simple_list_item_1, displayItems)
                         lvVaultCamo.adapter = adapter
                         
+                        // タップでダウンロード
                         lvVaultCamo.setOnItemClickListener { _, _, position, _ ->
                             val downloadUrl = "$targetUrl/download?name=${fileNames[position]}"
                             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
@@ -287,7 +264,7 @@ class ClientCamoActivity : AppCompatActivity() {
         })
     }
 
-    default override fun onDestroy() {
+    override fun onDestroy() {
         super.onDestroy()
         webViewCamo.destroy()
         handler.removeCallbacks(progressRunnable)

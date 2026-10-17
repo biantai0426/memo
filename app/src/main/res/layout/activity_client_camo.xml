@@ -39,13 +39,16 @@
                 android:textSize="12sp"
                 android:gravity="center" />
                 
+            <!-- IP入力ダイアログを出すための隠しボタン -->
             <TextView
+                android:id="@+id/btnConfigIpCamo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="⋮"
                 android:textSize="24sp"
                 android:textColor="#FFFFFF"
-                android:textStyle="bold"/>
+                android:textStyle="bold"
+                android:padding="8dp"/>
         </LinearLayout>
 
         <!-- ジャケット画像 ＆ プレビュー領域（タップで切り替え） -->
