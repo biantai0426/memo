@@ -17,7 +17,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ListView
-import android.widget.ProgressBar
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -44,7 +44,7 @@ class ClientCamoActivity : AppCompatActivity() {
     private lateinit var tvTrackTitle: TextView
     private lateinit var tvTrackArtist: TextView
     private lateinit var tvMixListTitle: TextView
-    private lateinit var progressBarCamo: ProgressBar
+    private lateinit var progressBarCamo: SeekBar
     private lateinit var btnPrevCamo: TextView
     private lateinit var btnPlayPauseCamo: TextView
     private lateinit var btnNextCamo: TextView
@@ -95,7 +95,7 @@ class ClientCamoActivity : AppCompatActivity() {
         }
         webViewCamo.setBackgroundColor(0)
 
-        // Apple Musicから最新のトレンド曲を取得してUIを偽装
+        // Apple Musicから最新のトレンド曲を取得
         fetchAppleMusicData()
 
         btnConfigIpCamo.setOnClickListener { showIpConfigDialog() }
@@ -128,11 +128,11 @@ class ClientCamoActivity : AppCompatActivity() {
         btnPlayPauseCamo.setOnClickListener {
             isRecording = !isRecording
             if (isRecording) {
-                btnPlayPauseCamo.text = "⏸"
+                btnPlayPauseCamo.text = "⏸" // ポーズアイコン
                 sendServerRequest("$targetUrl/start")
                 handler.post(progressRunnable)
             } else {
-                btnPlayPauseCamo.text = "▶"
+                btnPlayPauseCamo.text = "▶" // プレイアイコン
                 sendServerRequest("$targetUrl/stop")
                 handler.removeCallbacks(progressRunnable)
             }
@@ -143,16 +143,12 @@ class ClientCamoActivity : AppCompatActivity() {
         autoScanServer()
     }
 
-    // 匿名でApple Musicの公開RSSを取得し、本物の曲データでカモフラージュする
     private fun fetchAppleMusicData() {
         val url = "https://itunes.apple.com/jp/rss/topsongs/limit=20/json"
         val request = Request.Builder().url(url).build()
         
         httpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                // オフライン時はXMLに定義したデフォルトのまま（何もしない）
-            }
-
+            override fun onFailure(call: Call, e: IOException) {}
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val jsonStr = response.body?.string() ?: return
@@ -160,31 +156,28 @@ class ClientCamoActivity : AppCompatActivity() {
                     val entries = jsonObject.getJSONObject("feed").getJSONArray("entry")
                     
                     if (entries.length() > 0) {
-                        // 20曲の中からランダムに1曲選ぶ
                         val randomIndex = Random.nextInt(entries.length())
                         val entry = entries.getJSONObject(randomIndex)
                         
                         val title = entry.getJSONObject("im:name").getString("label")
                         val artist = entry.getJSONObject("im:artist").getString("label")
                         
-                        // 画像URLの取得（一番大きいサイズのものを選択）
                         val images = entry.getJSONArray("im:image")
-                        val imageUrl = images.getJSONObject(images.length() - 1).getString("label")
+                        // 可能な限り高画質なジャケットを取得（URL内の解像度指定をリサイズ）
+                        var imageUrl = images.getJSONObject(images.length() - 1).getString("label")
+                        imageUrl = imageUrl.replace("170x170", "600x600") 
                         
                         currentTrackName = title
 
                         runOnUiThread {
-                            tvTrackTitle.text = title
+                            tvTrackTitle.text = "$title ＞"
                             tvTrackArtist.text = artist
-                            tvMixListTitle.text = "━\n「$title」を元にしたミックスリスト"
+                            tvMixListTitle.text = "「$title」を元にしたミックスリスト"
                         }
                         
-                        // 画像のダウンロードと適用
                         downloadAndSetImage(imageUrl)
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                } catch (e: Exception) {}
             }
         })
     }
@@ -198,13 +191,9 @@ class ClientCamoActivity : AppCompatActivity() {
                     val inputStream = response.body?.byteStream()
                     val bitmap = BitmapFactory.decodeStream(inputStream)
                     if (bitmap != null) {
-                        runOnUiThread {
-                            imgJacket.setImageBitmap(bitmap)
-                        }
+                        runOnUiThread { imgJacket.setImageBitmap(bitmap) }
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                } catch (e: Exception) {}
             }
         })
     }
@@ -221,7 +210,6 @@ class ClientCamoActivity : AppCompatActivity() {
             val currentIp = targetUrl.replace("http://", "").replace(":8080", "")
             setText(currentIp)
         }
-
         AlertDialog.Builder(this)
             .setTitle("接続先IPアドレス設定")
             .setMessage("現場端末のIPを入力してください")
@@ -237,7 +225,7 @@ class ClientCamoActivity : AppCompatActivity() {
 
     private fun setTargetIp(ip: String) {
         targetUrl = "http://$ip:8080"
-        tvTargetIpCamo.text = "♪" 
+        tvTargetIpCamo.text = "🟢" 
         Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
         fetchVideoList()
         if (isPreviewVisible) reloadStream()
@@ -252,9 +240,7 @@ class ClientCamoActivity : AppCompatActivity() {
                 val ip = dhcp.gateway
                 val gatewayIp = String.format("%d.%d.%d.%d",
                     (ip and 0xff), (ip shr 8 and 0xff), (ip shr 16 and 0xff), (ip shr 24 and 0xff))
-                if (!possibleIps.contains(gatewayIp)) {
-                    possibleIps.add(0, gatewayIp)
-                }
+                if (!possibleIps.contains(gatewayIp)) possibleIps.add(0, gatewayIp)
             }
         } catch (e: Exception) {}
 
@@ -277,7 +263,7 @@ class ClientCamoActivity : AppCompatActivity() {
                 } catch (e: Exception) {}
             }
             if (!found) {
-                runOnUiThread { tvTargetIpCamo.text = "♪ 接続待機" }
+                runOnUiThread { tvTargetIpCamo.text = "🔴" }
             }
         }.start()
     }
@@ -308,8 +294,7 @@ class ClientCamoActivity : AppCompatActivity() {
                             val name = obj.getString("name")
                             val sizeMb = obj.getLong("size") / (1024 * 1024)
                             fileNames.add(name)
-                            // 音楽のプレイリストっぽく偽装
-                            displayItems.add("Track ${i+1} : $currentTrackName - Remix (${sizeMb}MB)")
+                            displayItems.add("Track ${i+1} : $currentTrackName (${sizeMb}MB)")
                         }
                         
                         val adapter = ArrayAdapter(this@ClientCamoActivity, android.R.layout.simple_list_item_1, displayItems)
