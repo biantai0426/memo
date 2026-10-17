@@ -10,12 +10,12 @@
         android:id="@+id/previewToggleSwitch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="ライブ監視プレビューを表示"
+        android:text="現場のライブ映像を受信・表示"
         android:textColor="#FFFFFF"
         android:textSize="18sp"
         android:layout_marginBottom="16dp" />
 
-    <!-- 映像受信用のウェブビュー（上部に配置して見やすく） -->
+    <!-- 映像受信用のウェブビュー -->
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
@@ -31,25 +31,48 @@
         android:text="カメラ向き 切替 (内/外)"
         android:layout_marginBottom="12dp" />
 
-    <Button
-        android:id="@+id/startRecordButton"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="証拠保存（Vaultへ録画） 開始"
-        android:layout_marginBottom="12dp" />
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+        
+        <Button
+            android:id="@+id/startRecordButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="証拠保存 開始"
+            android:layout_marginEnd="4dp"/>
 
-    <Button
-        android:id="@+id/stopRecordButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="証拠保存（Vaultへ録画） 停止"
-        android:layout_marginBottom="12dp" />
+        <Button
+            android:id="@+id/stopRecordButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="証拠保存 停止"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
 
     <Button
         android:id="@+id/sendNotificationButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="カモフラージュ通知 送信"
-        android:layout_marginBottom="16dp" />
+        android:text="画面点灯用 カモフラージュ通知送信"
+        android:layout_marginBottom="24dp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#333333"
+        android:layout_marginBottom="24dp"/>
+
+    <Button
+        android:id="@+id/downloadVideoButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="遠隔から証拠動画をダウンロード"
+        android:backgroundTint="#0066CC"
+        android:textColor="#FFFFFF" />
 
 </LinearLayout>
