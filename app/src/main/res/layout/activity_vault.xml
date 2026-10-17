@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212">
+
+    <!-- ヘッダー -->
+    <TextView
+        android:id="@+id/vaultTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Vault (シークレット動画金庫)"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:padding="16dp"
+        android:background="#1A1A1A" />
+
+    <!-- 暗号化ファイル（.dat）の一覧リスト -->
+    <ListView
+        android:id="@+id/vaultListView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/vaultTitle"
+        android:divider="#2A2A2A"
+        android:dividerHeight="1dp" />
+
+    <!-- 動画プレイヤーのオーバーレイ（初期状態は非表示） -->
+    <RelativeLayout
+        android:id="@+id/videoPlayerContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone">
+
+        <VideoView
+            android:id="@+id/videoView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_centerInParent="true" />
+
+        <Button
+            android:id="@+id/btnCloseVideo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="閉じる"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:layout_margin="16dp"
+            android:backgroundTint="#333333"
+            android:textColor="#FFFFFF" />
+    </RelativeLayout>
+</RelativeLayout>
