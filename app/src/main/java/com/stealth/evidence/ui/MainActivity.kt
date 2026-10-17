@@ -17,10 +17,7 @@ import com.stealth.evidence.R
 class MainActivity : AppCompatActivity() {
 
     private val PERMISSIONS_REQUEST_CODE = 100
-    // シークレットモード（コントロールハブ）に入るための隠しパスワード
     private val SECRET_PASSWORD = "9999"
-
-    private lateinit var embeddedServer: EmbeddedServer
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,28 +25,12 @@ class MainActivity : AppCompatActivity() {
 
         checkPermissions()
 
-        // アプリ起動と同時にKtorサーバーを立ち上げる
-        embeddedServer = EmbeddedServer(applicationContext)
-        embeddedServer.start()
+        // 仕様変更：アプリ起動時はカメラもサーバーも立ち上げない。完全なメモ帳として振る舞う。
 
-        // 同時に、カメラをストリーミング配信用にスタンバイさせる
-        startCameraStandby()
-
-        // ★修正：偽装用：画面上部の「メモ帳」タイトルを長押しした時の隠しギミック
+        // 偽装用：画面上部の「メモ帳」タイトルを長押しした時の隠しギミック
         findViewById<android.view.View>(R.id.headerTitle).setOnLongClickListener {
             showPasswordDialog()
             true
-        }
-    }
-
-    private fun startCameraStandby() {
-        val intent = Intent(this, StealthCameraService::class.java).apply {
-            action = StealthCameraService.ACTION_START_STANDBY
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
         }
     }
 
@@ -86,7 +67,6 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("OK") { _, _ ->
                 val password = input.text.toString()
                 if (password == SECRET_PASSWORD) {
-                    // パスワードが合致したら、コントロールハブへ遷移
                     startActivity(Intent(this, SecretMenuActivity::class.java))
                 } else {
                     Toast.makeText(this, "認証失敗", Toast.LENGTH_SHORT).show()
@@ -94,11 +74,5 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("キャンセル", null)
             .show()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // アプリ終了時にサーバーも停止させる
-        embeddedServer.stop()
     }
 }
