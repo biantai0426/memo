@@ -12,7 +12,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.os.VibratorManager
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebView
@@ -56,16 +55,14 @@ class ClientCamoActivity : AppCompatActivity() {
     private val httpClient = OkHttpClient()
     private var targetUrl = "http://127.0.0.1:8080"
 
-    private var isRecording = false // 実際の録画状態
-    private var isDummyPlaying = false // 偽装UIの再生状態
+    private var isRecording = false 
+    private var isDummyPlaying = false 
     private var isPreviewVisible = false
 
-    // 取得した曲のリストと現在位置
     data class TrackInfo(val title: String, val artist: String, val imageUrl: String)
     private val trackList = mutableListOf<TrackInfo>()
     private var currentTrackIndex = 0
 
-    // ダミーのシークバーを動かすタイマー
     private val handler = Handler(Looper.getMainLooper())
     private var progressValue = 0
     private val progressRunnable = object : Runnable {
@@ -128,15 +125,13 @@ class ClientCamoActivity : AppCompatActivity() {
             }
         }
 
-        // --- 戻るボタン(⏮) ---
-        // タップ：前の曲へ偽装切り替え
         btnPrevCamo.setOnClickListener {
             if (trackList.isNotEmpty()) {
                 currentTrackIndex = if (currentTrackIndex - 1 < 0) trackList.size - 1 else currentTrackIndex - 1
                 updateTrackUI()
             }
         }
-        // 長押し：内カメ/外カメの切り替え（ブルッ）
+        
         btnPrevCamo.setOnLongClickListener {
             vibrateFeedback(longArrayOf(0, 50))
             sendServerRequest("$targetUrl/switch")
@@ -144,8 +139,6 @@ class ClientCamoActivity : AppCompatActivity() {
             true
         }
 
-        // --- 再生ボタン(▶/⏸) ---
-        // タップ：ダミーの音楽再生/一時停止（シークバーが動く）
         btnPlayPauseCamo.setOnClickListener {
             isDummyPlaying = !isDummyPlaying
             if (isDummyPlaying) {
@@ -156,28 +149,26 @@ class ClientCamoActivity : AppCompatActivity() {
                 handler.removeCallbacks(progressRunnable)
             }
         }
-        // 長押し：実際の録画の開始/停止（ブルッ / ブルッブルッ）
+        
         btnPlayPauseCamo.setOnLongClickListener {
             isRecording = !isRecording
             if (isRecording) {
-                vibrateFeedback(longArrayOf(0, 50)) // 録画開始：短1回
+                vibrateFeedback(longArrayOf(0, 50)) 
                 sendServerRequest("$targetUrl/start")
             } else {
-                vibrateFeedback(longArrayOf(0, 50, 100, 50)) // 録画停止：短2回
+                vibrateFeedback(longArrayOf(0, 50, 100, 50)) 
                 sendServerRequest("$targetUrl/stop")
             }
             true
         }
 
-        // --- 次へボタン(⏭) ---
-        // タップ：次の曲へ偽装切り替え
         btnNextCamo.setOnClickListener {
             if (trackList.isNotEmpty()) {
                 currentTrackIndex = (currentTrackIndex + 1) % trackList.size
                 updateTrackUI()
             }
         }
-        // 長押し：カモフラージュ通知送信（ブルッ）
+        
         btnNextCamo.setOnLongClickListener {
             vibrateFeedback(longArrayOf(0, 50))
             sendServerRequest("$targetUrl/notify")
@@ -187,7 +178,6 @@ class ClientCamoActivity : AppCompatActivity() {
         autoScanServer()
     }
 
-    // 盲牌（見ないで操作）用のバイブレーションフィードバック
     private fun vibrateFeedback(pattern: LongArray) {
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         if (vibrator.hasVibrator()) {
@@ -357,7 +347,7 @@ class ClientCamoActivity : AppCompatActivity() {
                             val sizeMb = obj.getLong("size") / (1024 * 1024)
                             fileNames.add(name)
                             
-                            val trackName = if (trackList.isNotEmpty()) trackList[0].title else currentTrackName
+                            val trackName = if (trackList.isNotEmpty()) trackList[currentTrackIndex].title else "なんもねえ"
                             displayItems.add("Track ${i+1} : $trackName (${sizeMb}MB)")
                         }
                         
