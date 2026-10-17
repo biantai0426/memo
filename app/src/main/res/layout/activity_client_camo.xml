@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- スワイプで引き出せるボトムシートを使うためのコンテナ -->
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212">
+
+    <!-- メイン画面（音楽プレイヤー偽装） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- ヘッダー（ダミーアイコンとIP表示） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="24dp">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="∨"
+                android:textSize="20sp"
+                android:textColor="#FFFFFF" />
+                
+            <!-- ここにこっそり接続状態を表示 -->
+            <TextView
+                android:id="@+id/tvTargetIpCamo"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="♪ 接続スキャン中..."
+                android:textColor="#888888"
+                android:textSize="12sp"
+                android:gravity="center" />
+                
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⋮"
+                android:textSize="24sp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"/>
+        </LinearLayout>
+
+        <!-- ジャケット画像 ＆ プレビュー領域（タップで切り替え） -->
+        <FrameLayout
+            android:id="@+id/jacketContainer"
+            android:layout_width="match_parent"
+            android:layout_height="320dp"
+            android:layout_marginBottom="32dp">
+
+            <!-- 偽装用ジャケット（デフォルトは音符アイコン） -->
+            <TextView
+                android:id="@+id/imgJacket"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#222222"
+                android:text="🎵"
+                android:textColor="#555555"
+                android:textSize="100sp"
+                android:gravity="center" />
+
+            <!-- ストリーミング画面（初期は非表示） -->
+            <WebView
+                android:id="@+id/webViewCamo"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- 曲名・アーティスト名（ダミー） -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="なんもねえ"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="忘れらんねえよ"
+            android:textColor="#AAAAAA"
+            android:textSize="16sp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- シークバー（ダミー。再生中は少しずつ進むようにプログラム側で動かします） -->
+        <ProgressBar
+            android:id="@+id/progressBarCamo"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:progress="0"
+            android:layout_marginBottom="24dp" />
+
+        <!-- 再生コントローラー（ここが実際の操作ボタン） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="16dp">
+
+            <!-- 戻る ＝ カメラ切替 -->
+            <TextView
+                android:id="@+id/btnPrevCamo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏮"
+                android:textSize="40sp"
+                android:textColor="#FFFFFF"
+                android:padding="16dp" />
+
+            <Space
+                android:layout_width="16dp"
+                android:layout_height="wrap_content" />
+
+            <!-- 再生/停止 ＝ 録画開始/停止 -->
+            <TextView
+                android:id="@+id/btnPlayPauseCamo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="▶"
+                android:textSize="56sp"
+                android:textColor="#FFFFFF"
+                android:padding="16dp" />
+
+            <Space
+                android:layout_width="16dp"
+                android:layout_height="wrap_content" />
+
+            <!-- 次へ ＝ カモフラージュ通知送信 -->
+            <TextView
+                android:id="@+id/btnNextCamo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏭"
+                android:textSize="40sp"
+                android:textColor="#FFFFFF"
+                android:padding="16dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ボトムシート（上にスワイプで引き出す録画一覧） -->
+    <LinearLayout
+        android:id="@+id/bottomSheet"
+        android:layout_width="match_parent"
+        android:layout_height="400dp"
+        android:background="#222222"
+        android:orientation="vertical"
+        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
+        app:behavior_hideable="false"
+        app:behavior_peekHeight="60dp">
+
+        <!-- 引き出し用のハンドル部分（ミックスリスト偽装） -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="━\n「なんもねえ」を元にしたミックスリスト"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:background="#333333" />
+
+        <!-- 実際の遠隔動画ダウンロードリスト -->
+        <ListView
+            android:id="@+id/lvVaultCamo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </LinearLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
