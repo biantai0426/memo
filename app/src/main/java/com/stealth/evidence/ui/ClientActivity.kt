@@ -1,14 +1,18 @@
 package com.stealth.evidence.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.Switch
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -20,9 +24,12 @@ import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 class ClientActivity : AppCompatActivity() {
 
+    private lateinit var tvTargetIp: TextView
+    private lateinit var btnConfigIp: Button
     private lateinit var previewToggleSwitch: Switch
     private lateinit var switchCameraButton: Button
     private lateinit var startRecordButton: Button
@@ -33,18 +40,16 @@ class ClientActivity : AppCompatActivity() {
 
     private val httpClient = OkHttpClient()
     
-    // Androidのテザリング（親機）のデフォルトIPアドレス
-    private val serverBaseUrl = "http://192.168.43.1:8080" 
-    private val localTestUrl = "http://127.0.0.1:8080"
-    
-    // ★修正：接続先を自分自身（localTestUrl）から、現場端末（serverBaseUrl）に変更！
-    private var targetUrl = serverBaseUrl 
+    // 現在の接続先
+    private var targetUrl = "http://127.0.0.1:8080"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_client)
 
+        tvTargetIp = findViewById(R.id.tvTargetIp)
+        btnConfigIp = findViewById(R.id.btnConfigIp)
         previewToggleSwitch = findViewById(R.id.previewToggleSwitch)
         switchCameraButton = findViewById(R.id.switchCameraButton)
         startRecordButton = findViewById(R.id.startRecordButton)
@@ -60,7 +65,12 @@ class ClientActivity : AppCompatActivity() {
         }
         webView.setBackgroundColor(0)
 
-        // 1. プレビューのON/OFF
+        // IP手動設定ボタン
+        btnConfigIp.setOnClickListener {
+            showIpConfigDialog()
+        }
+
+        // 各種ボタンのイベント
         previewToggleSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 webView.visibility = View.VISIBLE
@@ -73,37 +83,112 @@ class ClientActivity : AppCompatActivity() {
             }
         }
 
-        // 2. カメラ向き切替
         switchCameraButton.setOnClickListener {
             sendServerRequest("$targetUrl/switch", "カメラの向きを切り替えました")
             if (previewToggleSwitch.isChecked) {
-                webView.postDelayed({
-                    val streamUrl = "$targetUrl/stream"
-                    val html = "<html><body style='margin:0;padding:0;background-color:black;display:flex;justify-content:center;align-items:center;'><img src='$streamUrl' width='100%' /></body></html>"
-                    webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-                }, 1500)
+                webView.postDelayed({ reloadStream() }, 1500)
             }
         }
 
-        // 3. 録画開始
-        startRecordButton.setOnClickListener {
-            sendServerRequest("$targetUrl/start", "Vaultへの証拠保存を開始しました")
+        startRecordButton.setOnClickListener { sendServerRequest("$targetUrl/start", "Vaultへの証拠保存を開始") }
+        stopRecordButton.setOnClickListener { sendServerRequest("$targetUrl/stop", "Vaultへの証拠保存を停止") }
+        sendNotificationButton.setOnClickListener { sendServerRequest("$targetUrl/notify", "カモフラージュ通知を送信") }
+        downloadVideoButton.setOnClickListener { fetchVideoList() }
+
+        // 画面起動時にネットワークを自動スキャン
+        autoScanServer()
+    }
+
+    private fun reloadStream() {
+        val streamUrl = "$targetUrl/stream"
+        val html = "<html><body style='margin:0;padding:0;background-color:black;display:flex;justify-content:center;align-items:center;'><img src='$streamUrl' width='100%' /></body></html>"
+        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    }
+
+    // IP手動設定ダイアログ
+    private fun showIpConfigDialog() {
+        val input = EditText(this).apply {
+            hint = "例: 192.168.43.1"
+            val currentIp = targetUrl.replace("http://", "").replace(":8080", "")
+            setText(currentIp)
         }
 
-        // 4. 録画停止
-        stopRecordButton.setOnClickListener {
-            sendServerRequest("$targetUrl/stop", "Vaultへの証拠保存を停止しました")
+        AlertDialog.Builder(this)
+            .setTitle("サーバーのIPアドレスを入力")
+            .setMessage("現場端末の画面に表示されたIPアドレスを入力してください。")
+            .setView(input)
+            .setPositiveButton("接続") { _, _ ->
+                val ip = input.text.toString().trim()
+                if (ip.isNotEmpty()) {
+                    setTargetIp(ip)
+                }
+            }
+            .setNeutralButton("再スキャン") { _, _ ->
+                autoScanServer()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun setTargetIp(ip: String) {
+        targetUrl = "http://$ip:8080"
+        tvTargetIp.text = "接続先: $ip"
+        Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
+        sendServerRequest("$targetUrl/", "通信テスト: $ip に接続成功！")
+        
+        if (previewToggleSwitch.isChecked) {
+            reloadStream()
+        }
+    }
+
+    // テザリングやローカルホストを自動スキャンして接続
+    private fun autoScanServer() {
+        tvTargetIp.text = "スキャン中..."
+        
+        val possibleIps = mutableListOf("192.168.43.1", "192.168.49.1", "127.0.0.1")
+        
+        // 自分がWi-Fiに繋がっている場合、ゲートウェイ（親機）のIPを取得して最優先で試す
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val dhcp = wifiManager.dhcpInfo
+        if (dhcp != null && dhcp.gateway != 0) {
+            val ip = dhcp.gateway
+            val gatewayIp = String.format("%d.%d.%d.%d",
+                (ip and 0xff), (ip shr 8 and 0xff), (ip shr 16 and 0xff), (ip shr 24 and 0xff))
+            if (!possibleIps.contains(gatewayIp)) {
+                possibleIps.add(0, gatewayIp)
+            }
         }
 
-        // 5. 通知送信
-        sendNotificationButton.setOnClickListener {
-            sendServerRequest("$targetUrl/notify", "カモフラージュ通知を送信しました")
-        }
+        Thread {
+            var found = false
+            // タイムアウトを1秒にして高速スキャン
+            val testClient = OkHttpClient.Builder()
+                .connectTimeout(1, TimeUnit.SECONDS)
+                .readTimeout(1, TimeUnit.SECONDS)
+                .build()
 
-        // 6. 遠隔ダウンロード
-        downloadVideoButton.setOnClickListener {
-            fetchVideoList()
-        }
+            for (ip in possibleIps) {
+                try {
+                    val req = Request.Builder().url("http://$ip:8080/").build()
+                    val response = testClient.newCall(req).execute()
+                    if (response.isSuccessful) {
+                        found = true
+                        runOnUiThread { setTargetIp(ip) }
+                        break
+                    }
+                } catch (e: Exception) {
+                    // 繋がらなければ次へ
+                }
+            }
+            
+            if (!found) {
+                runOnUiThread {
+                    tvTargetIp.text = "未接続"
+                    Toast.makeText(this@ClientActivity, "サーバーが見つかりません。手動で入力してください。", Toast.LENGTH_LONG).show()
+                    showIpConfigDialog()
+                }
+            }
+        }.start()
     }
 
     private fun sendServerRequest(url: String, successMessage: String) {
@@ -138,25 +223,20 @@ class ClientActivity : AppCompatActivity() {
                     try {
                         val jsonArray = JSONArray(jsonStr)
                         if (jsonArray.length() == 0) {
-                            Toast.makeText(this@ClientActivity, "現場に保存された動画はありません", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@ClientActivity, "動画はありません", Toast.LENGTH_SHORT).show()
                             return@runOnUiThread
                         }
-
                         val fileNames = mutableListOf<String>()
                         val displayItems = mutableListOf<String>()
-
                         for (i in 0 until jsonArray.length()) {
                             val obj = jsonArray.getJSONObject(i)
                             val name = obj.getString("name")
                             val date = obj.getString("date")
                             val sizeMb = obj.getLong("size") / (1024 * 1024)
-                            
                             fileNames.add(name)
                             displayItems.add("撮影: $date\nサイズ: ${sizeMb}MB")
                         }
-
                         showDownloadDialog(fileNames, displayItems)
-
                     } catch (e: Exception) {
                         Toast.makeText(this@ClientActivity, "データ解析エラー", Toast.LENGTH_SHORT).show()
                     }
@@ -170,8 +250,7 @@ class ClientActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("ダウンロードする動画を選択")
             .setAdapter(adapter) { _, which ->
-                val selectedFile = fileNames[which]
-                downloadVideoFile(selectedFile)
+                downloadVideoFile(fileNames[which])
             }
             .setNegativeButton("キャンセル", null)
             .show()

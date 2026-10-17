@@ -6,6 +6,33 @@
     android:background="#121212"
     android:padding="16dp">
 
+    <!-- IPアドレス表示と設定ボタン -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:id="@+id/tvTargetIp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="接続先: スキャン中..."
+            android:textColor="#00FF00"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnConfigIp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="IP手動設定"
+            android:backgroundTint="#444444"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+
     <Switch
         android:id="@+id/previewToggleSwitch"
         android:layout_width="match_parent"
@@ -15,7 +42,6 @@
         android:textSize="18sp"
         android:layout_marginBottom="16dp" />
 
-    <!-- 映像受信用のウェブビュー -->
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
