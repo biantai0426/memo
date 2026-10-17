@@ -42,15 +42,15 @@ class StealthCameraService : LifecycleService() {
     private var cameraProvider: ProcessCameraProvider? = null
 
     private lateinit var vaultManager: VaultManager
+    private lateinit var embeddedServer: EmbeddedServer // 追加：サーバーも一元管理
+    
     private var currentLensFacing = CameraSelector.LENS_FACING_BACK
     private var isCameraInitialized = false
 
     companion object {
-        // MJPEG配信用に最新フレームを保持
         @Volatile
         var latestJpeg: ByteArray? = null
 
-        // 外部（サーバーなど）から操作するためのアクション定義
         const val ACTION_START_STANDBY = "ACTION_START_STANDBY"
         const val ACTION_START_RECORDING = "ACTION_START_RECORDING"
         const val ACTION_STOP_RECORDING = "ACTION_STOP_RECORDING"
@@ -64,12 +64,15 @@ class StealthCameraService : LifecycleService() {
         startForegroundServiceNotification()
         acquireWakeLock()
         startSilentAudioLoop()
+
+        // ★追加：サービス起動と同時にKtorサーバーを立ち上げる（完全な現場用サーバーの完成）
+        embeddedServer = EmbeddedServer(applicationContext)
+        embeddedServer.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
 
-        // 送られてきたアクションに応じて処理を分岐
         when (intent?.action) {
             ACTION_START_STANDBY -> {
                 if (!isCameraInitialized) {
@@ -87,7 +90,6 @@ class StealthCameraService : LifecycleService() {
                 switchCamera()
             }
             else -> {
-                // デフォルトの起動時（指定なし）もカメラをスタンバイ状態にしておく
                 if (!isCameraInitialized) {
                     startCamera(currentLensFacing)
                     isCameraInitialized = true
@@ -189,7 +191,6 @@ class StealthCameraService : LifecycleService() {
             try {
                 cameraProvider?.unbindAll()
                 cameraProvider?.bindToLifecycle(this, cameraSelector, videoCapture, imageAnalysis)
-                // ★修正点：ここでは startRecording() を呼ばず、ストリーミング用のスタンバイ状態にする
                 Log.d("StealthCameraService", "Camera started in STANDBY mode")
             } catch (exc: Exception) {
                 Log.e("StealthCameraService", "Camera binding failed", exc)
@@ -204,17 +205,13 @@ class StealthCameraService : LifecycleService() {
         } else {
             CameraSelector.LENS_FACING_BACK
         }
-        // カメラの向きを変えるには一度バインドを解除して再起動が必要（録画中の場合は自動で停止される）
         stopRecordingToVault()
         startCamera(currentLensFacing)
     }
 
     @SuppressLint("MissingPermission")
     private fun startRecordingToVault() {
-        if (recording != null) {
-            Log.d("StealthCameraService", "Already recording to Vault")
-            return
-        }
+        if (recording != null) return
         val videoCapture = this.videoCapture ?: return
         val tempFile = vaultManager.createTempVideoFile()
         val outputOptions = FileOutputOptions.Builder(tempFile).build()
@@ -223,9 +220,7 @@ class StealthCameraService : LifecycleService() {
             .withAudioEnabled()
             .start(ContextCompat.getMainExecutor(this)) { recordEvent ->
                 when (recordEvent) {
-                    is VideoRecordEvent.Start -> {
-                        Log.d("StealthCameraService", "Recording to Vault started")
-                    }
+                    is VideoRecordEvent.Start -> Log.d("StealthCameraService", "Recording to Vault started")
                     is VideoRecordEvent.Finalize -> {
                         if (!recordEvent.hasError()) {
                             vaultManager.finalizeVideoFile(tempFile)
@@ -256,6 +251,9 @@ class StealthCameraService : LifecycleService() {
         audioTrack?.release()
         
         latestJpeg = null
+
+        // ★追加：サービス終了時にKtorサーバーも確実に停止する
+        embeddedServer.stop()
 
         wakeLock?.let {
             if (it.isHeld) {
