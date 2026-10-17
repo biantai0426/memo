@@ -32,7 +32,7 @@ android {
         viewBinding = true
     }
     
-    // 追加：重複するMETA-INFファイルを除外してエラーを回避
+    // 重複するMETA-INFファイルを除外してエラーを回避
     packaging {
         resources {
             excludes += setOf(
