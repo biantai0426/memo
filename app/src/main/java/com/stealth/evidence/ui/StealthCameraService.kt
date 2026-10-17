@@ -29,15 +29,13 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class StealthCameraService : LifecycleService() {
-
     private var wakeLock: PowerManager.WakeLock? = null
     private var audioTrack: AudioTrack? = null
     private var isPlayingSilence = false
-
     private lateinit var cameraExecutor: ExecutorService
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
-    
+
     private lateinit var vaultManager: VaultManager
 
     override fun onCreate() {
@@ -47,11 +45,24 @@ class StealthCameraService : LifecycleService() {
         startForegroundServiceNotification()
         acquireWakeLock()
         startSilentAudioLoop()
-        startCamera()
+        // カメラの起動は onStartCommand でフラグを受け取ってから行うよう変更
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        
+        // すでに録画中の場合は停止してサービスを終了する（トグル動作）
+        if (recording != null) {
+            recording?.stop()
+            recording = null
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // MainActivityから送られた内カメ/外カメのフラグを取得（デフォルトは外カメ）
+        val facing = intent?.getIntExtra("EXTRA_CAMERA_FACING", CameraSelector.LENS_FACING_BACK) ?: CameraSelector.LENS_FACING_BACK
+        startCamera(facing)
+
         // サービスがOSにKillされても自動で再起動を試みる
         return START_STICKY
     }
@@ -107,11 +118,10 @@ class StealthCameraService : LifecycleService() {
             .setSmallIcon(android.R.drawable.ic_popup_sync)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
-
         startForeground(1, notification)
     }
 
-    private fun startCamera() {
+    private fun startCamera(lensFacing: Int) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
@@ -120,8 +130,8 @@ class StealthCameraService : LifecycleService() {
                 .build()
             videoCapture = VideoCapture.withOutput(recorder)
 
-            // デフォルトは背面カメラ
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            // 受け取ったフラグに基づいてカメラの向きを設定
+            val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
             try {
                 cameraProvider.unbindAll()
@@ -129,6 +139,7 @@ class StealthCameraService : LifecycleService() {
                 startRecording()
             } catch (exc: Exception) {
                 Log.e("StealthCameraService", "Camera binding failed", exc)
+                stopSelf() // 失敗時はサービスを停止
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -137,7 +148,6 @@ class StealthCameraService : LifecycleService() {
     private fun startRecording() {
         val videoCapture = this.videoCapture ?: return
         val tempFile = vaultManager.createTempVideoFile()
-        
         val outputOptions = FileOutputOptions.Builder(tempFile).build()
         recording = videoCapture.output
             .prepareRecording(this, outputOptions)
@@ -169,11 +179,11 @@ class StealthCameraService : LifecycleService() {
         recording?.stop()
         recording = null
         cameraExecutor.shutdown()
-        
+
         isPlayingSilence = false
         audioTrack?.stop()
         audioTrack?.release()
-        
+
         wakeLock?.let {
             if (it.isHeld) {
                 it.release()
