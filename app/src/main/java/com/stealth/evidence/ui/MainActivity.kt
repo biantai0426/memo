@@ -5,83 +5,46 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.view.View
+import android.text.InputType
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.stealth.evidence.R
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var localServer: EmbeddedServer
+    private val PERMISSIONS_REQUEST_CODE = 100
+    // シークレットモード（コントロールハブ）に入るための隠しパスワード
+    private val SECRET_PASSWORD = "9999"
+
+    private lateinit var embeddedServer: EmbeddedServer
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 通知権限のリクエスト (Android 13+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
-            }
-        }
+        checkPermissions()
 
-        // アプリ起動時（MainActivity生成時）にKtorサーバーを自動起動
-        localServer = EmbeddedServer(applicationContext)
-        localServer.start()
+        // アプリ起動と同時にKtorサーバーを立ち上げる
+        embeddedServer = EmbeddedServer(applicationContext)
+        embeddedServer.start()
 
-        val bottomNavigation = findViewById<BottomNavigationView>(R.id.bottomNavigation)
+        // 同時に、カメラをストリーミング配信用にスタンバイさせる
+        startCameraStandby()
 
-        // 通常タップ時のダミー動作
-        bottomNavigation.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_memo -> Toast.makeText(this, "メモ一覧を表示します", Toast.LENGTH_SHORT).show()
-                R.id.nav_task -> Toast.makeText(this, "タスクはありません", Toast.LENGTH_SHORT).show()
-                R.id.nav_settings -> Toast.makeText(this, "設定項目はありません", Toast.LENGTH_SHORT).show()
-            }
-            true
-        }
-
-        // BottomNavigationViewのレイアウト描画完了を待ってから長押しイベントをセット
-        bottomNavigation.post {
-            setupLongClicks(bottomNavigation)
-        }
-    }
-
-    private fun setupLongClicks(bottomNavigation: BottomNavigationView) {
-        val navMemo = bottomNavigation.findViewById<View>(R.id.nav_memo)
-        val navTask = bottomNavigation.findViewById<View>(R.id.nav_task)
-        val navSettings = bottomNavigation.findViewById<View>(R.id.nav_settings)
-
-        // 1. メモ長押し：外カメラ（背面）の録画切り替え
-        navMemo?.setOnLongClickListener {
-            Toast.makeText(this, "外カメラの録画を切り替えます", Toast.LENGTH_SHORT).show()
-            toggleRecording(CameraSelector.LENS_FACING_BACK)
-            true
-        }
-
-        // 2. タスク長押し：内カメラ（前面）の録画切り替え
-        navTask?.setOnLongClickListener {
-            Toast.makeText(this, "内カメラの録画を切り替えます", Toast.LENGTH_SHORT).show()
-            toggleRecording(CameraSelector.LENS_FACING_FRONT)
-            true
-        }
-
-        // 3. 設定長押し：パスワード要求ダイアログ表示
-        navSettings?.setOnLongClickListener {
+        // 偽装用：右下のタブ（アイコンの代わり）を長押しした時の隠しギミック
+        findViewById<android.view.View>(R.id.tabSettings).setOnLongClickListener {
             showPasswordDialog()
             true
         }
     }
 
-    private fun toggleRecording(lensFacing: Int) {
+    private fun startCameraStandby() {
         val intent = Intent(this, StealthCameraService::class.java).apply {
-            putExtra("EXTRA_CAMERA_FACING", lensFacing)
+            action = StealthCameraService.ACTION_START_STANDBY
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -90,26 +53,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPasswordDialog() {
-        val editText = EditText(this).apply {
-            hint = "パスワード"
-            // パスワード用の入力キーボード（数字のみ）を指定
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+    private fun checkPermissions() {
+        val requiredPermissions = mutableListOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requiredPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
-        
+
+        val missingPermissions = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this,
+                missingPermissions.toTypedArray(),
+                PERMISSIONS_REQUEST_CODE
+            )
+        }
+    }
+
+    private fun showPasswordDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        }
+
         AlertDialog.Builder(this)
-            .setTitle("プライベートメモ")
-            .setMessage("パスワードを入力してください")
-            .setView(editText)
-            .setPositiveButton("確認") { _, _ ->
-                val password = editText.text.toString()
-                if (password == "9999") { 
-                    // SecretMenuActivity（ハブ画面）へ遷移
-                    val intent = Intent(this, SecretMenuActivity::class.java)
-                    startActivity(intent)
-                    Toast.makeText(this, "認証成功", Toast.LENGTH_SHORT).show()
+            .setTitle("パスコード入力")
+            .setView(input)
+            .setPositiveButton("OK") { _, _ ->
+                val password = input.text.toString()
+                if (password == SECRET_PASSWORD) {
+                    // パスワードが合致したら、コントロールハブへ遷移
+                    startActivity(Intent(this, SecretMenuActivity::class.java))
                 } else {
-                    Toast.makeText(this, "パスワードが違います", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "認証失敗", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("キャンセル", null)
@@ -118,7 +98,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // アプリ画面が完全に閉じられた際にサーバーも停止する
-        localServer.stop()
+        // アプリ終了時にサーバーも停止させる
+        embeddedServer.stop()
     }
 }

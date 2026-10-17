@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.camera.core.CameraSelector
 import androidx.core.app.NotificationCompat
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
@@ -29,36 +28,47 @@ class EmbeddedServer(private val appContext: Context) {
         CoroutineScope(Dispatchers.IO).launch {
             server = embeddedServer(Netty, port = 8080) {
                 routing {
-                    // サーバー稼働確認用
                     get("/") {
                         call.respondText("StealthVault Server is running")
                     }
                     
-                    // 遠隔：録画開始（カメラ向きの指定対応）
+                    // 遠隔：録画（Vaultへの保存）開始
                     get("/start") {
-                        val facingParam = call.parameters["facing"]
-                        val lensFacing = if (facingParam == "front") {
-                            CameraSelector.LENS_FACING_FRONT
-                        } else {
-                            CameraSelector.LENS_FACING_BACK
-                        }
-
                         val intent = Intent(appContext, StealthCameraService::class.java).apply {
-                            putExtra("EXTRA_CAMERA_FACING", lensFacing)
+                            action = StealthCameraService.ACTION_START_RECORDING
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             appContext.startForegroundService(intent)
                         } else {
                             appContext.startService(intent)
                         }
-                        call.respondText("Recording started (facing: $facingParam)")
+                        call.respondText("Recording to Vault started")
                     }
                     
-                    // 遠隔：録画停止
+                    // 遠隔：録画（Vaultへの保存）停止
                     get("/stop") {
-                        val intent = Intent(appContext, StealthCameraService::class.java)
-                        appContext.stopService(intent)
-                        call.respondText("Recording stopped via remote")
+                        val intent = Intent(appContext, StealthCameraService::class.java).apply {
+                            action = StealthCameraService.ACTION_STOP_RECORDING
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            appContext.startForegroundService(intent)
+                        } else {
+                            appContext.startService(intent)
+                        }
+                        call.respondText("Recording to Vault stopped")
+                    }
+
+                    // 遠隔：カメラの向き切り替え
+                    get("/switch") {
+                        val intent = Intent(appContext, StealthCameraService::class.java).apply {
+                            action = StealthCameraService.ACTION_SWITCH_CAMERA
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            appContext.startForegroundService(intent)
+                        } else {
+                            appContext.startService(intent)
+                        }
+                        call.respondText("Camera switched")
                     }
 
                     // 遠隔：カモフラージュ通知送信
@@ -74,7 +84,7 @@ class EmbeddedServer(private val appContext: Context) {
                         exitProcess(0)
                     }
 
-                    // 追加：映像ストリーミング（MJPEG配信）
+                    // 映像ストリーミング（MJPEG配信）
                     get("/stream") {
                         call.response.header("Cache-Control", "no-cache")
                         call.respondOutputStream(ContentType.parse("multipart/x-mixed-replace; boundary=--myboundary")) {
@@ -89,11 +99,9 @@ class EmbeddedServer(private val appContext: Context) {
                                         write("\r\n".toByteArray())
                                         flush()
                                     }
-                                    // 約10fpsで配信（ネットワーク負荷を抑える）
-                                    Thread.sleep(100)
+                                    Thread.sleep(100) // 10fps
                                 }
                             } catch (e: Exception) {
-                                // クライアント側（ブラウザやアプリ）が切断した場合はループを抜けて終了
                             }
                         }
                     }
