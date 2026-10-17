@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">                                                   
     <!-- 証拠収集に必要な権限群 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -15,14 +14,14 @@
     <!-- 盲牌操作のフィードバックに必要な振動権限 -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <uses-feature android:name="android.hardware.camera" android:required="true" />
-
+    <uses-feature android:name="android.hardware.camera" android:required="true" />                                     
+    
     <application
         android:allowBackup="false"
         android:label="Memo"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">                                                                                                                           
         <!-- 偽装用メイン画面（表の顔：メモ帳） -->
         <activity
             android:name=".ui.MainActivity"
@@ -55,7 +54,7 @@
             android:exported="false"
             android:foregroundServiceType="camera|microphone" />
 
-        <!-- 音量キー監視用ユーザー補助サービス（クライアント遠隔操作用） -->
+        <!-- 音量キー監視用ユーザー補助サービス（クライアン ト遠隔操作用） -->
         <service
             android:name=".ui.VolumeKeyTriggerService"
             android:enabled="true"
