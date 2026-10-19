@@ -206,11 +206,12 @@ class StealthCameraService : Service() {
                 }
             }
 
-            if (targetCameraId == null) targetCameraId = manager.cameraIdList[0]
+            // ★修正箇所：null許容(String?)から非null(String)に変換して固定する
+            val finalCameraId = targetCameraId ?: manager.cameraIdList[0]
 
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
 
-            manager.openCamera(targetCameraId, object : CameraDevice.StateCallback() {
+            manager.openCamera(finalCameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     cameraDevice = camera
                     startCaptureSession()
