@@ -20,6 +20,7 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,7 +36,7 @@ class EmbeddedServer(private val appContext: Context) {
                     get("/") {
                         call.respondText("StealthVault Server is running in STANDBY")
                     }
-                    
+
                     // --- カメラ・録画操作 ---
                     get("/start") {
                         val intent = Intent(appContext, StealthCameraService::class.java).apply {
@@ -48,7 +49,7 @@ class EmbeddedServer(private val appContext: Context) {
                         }
                         call.respondText("Recording to Vault started")
                     }
-                    
+
                     get("/stop") {
                         val intent = Intent(appContext, StealthCameraService::class.java).apply {
                             action = StealthCameraService.ACTION_STOP_RECORDING
@@ -83,7 +84,7 @@ class EmbeddedServer(private val appContext: Context) {
                     get("/videos") {
                         val vaultManager = VaultManager(appContext)
                         val files = vaultManager.getVaultFiles()
-                        
+
                         val jsonList = files.joinToString(prefix = "[", postfix = "]") { file ->
                             val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(file.lastModified()))
                             // クライアントでパースしやすいように単純なJSON文字列を作る
@@ -102,12 +103,12 @@ class EmbeddedServer(private val appContext: Context) {
 
                         val vaultManager = VaultManager(appContext)
                         val targetDat = vaultManager.getVaultFiles().find { it.name == fileName }
-                        
+
                         if (targetDat == null) {
                             call.respondText("File not found", status = HttpStatusCode.NotFound)
                             return@get
                         }
-                        
+
                         val decryptedTemp = vaultManager.decryptVideoFile(targetDat)
                         if (decryptedTemp == null) {
                             call.respondText("Decryption failed", status = HttpStatusCode.InternalServerError)
@@ -116,7 +117,7 @@ class EmbeddedServer(private val appContext: Context) {
 
                         val downloadFileName = fileName.replace(".dat", ".mp4")
                         call.response.header("Content-Disposition", "attachment; filename=\"$downloadFileName\"")
-                        
+
                         // 復号されたファイルを送信し、送信が終わったら確実に削除する
                         call.respondOutputStream(ContentType.parse("video/mp4")) {
                             try {
@@ -134,7 +135,7 @@ class EmbeddedServer(private val appContext: Context) {
                         call.respondText("Executing Kill Switch... Wiping all Vault data.")
                         val vaultManager = VaultManager(appContext)
                         vaultManager.executeSelfDestruct() // ゼロ埋め上書き＆削除を実行
-                        
+
                         Thread.sleep(1000) // クライアントに返答を返す猶予
                         exitProcess(0)
                     }
@@ -142,19 +143,22 @@ class EmbeddedServer(private val appContext: Context) {
                     // --- 映像ストリーミング（MJPEG配信） ---
                     get("/stream") {
                         call.response.header("Cache-Control", "no-cache")
-                        call.respondOutputStream(ContentType.parse("multipart/x-mixed-replace; boundary=--myboundary")) {
+                        // ★修正1: Boundary文字列をNanoHTTPD時代の "--BoundaryString" に完全に一致させる
+                        call.respondOutputStream(ContentType.parse("multipart/x-mixed-replace; boundary=--BoundaryString")) {
+                            val out: OutputStream = this
                             try {
                                 while (true) {
                                     val jpeg = StealthCameraService.latestJpeg
                                     if (jpeg != null) {
-                                        write("--myboundary\r\n".toByteArray())
-                                        write("Content-Type: image/jpeg\r\n".toByteArray())
-                                        write("Content-Length: ${jpeg.size}\r\n\r\n".toByteArray())
-                                        write(jpeg)
-                                        write("\r\n".toByteArray())
-                                        flush()
+                                        out.write("--BoundaryString\r\n".toByteArray())
+                                        out.write("Content-Type: image/jpeg\r\n".toByteArray())
+                                        out.write("Content-Length: ${jpeg.size}\r\n\r\n".toByteArray())
+                                        out.write(jpeg)
+                                        out.write("\r\n".toByteArray())
+                                        out.flush()
                                     }
-                                    Thread.sleep(100) // 約10fps
+                                    // ★修正2: 30fpsの待機時間 (33ms) に最適化し、カクつきと詰まりを解消
+                                    Thread.sleep(33)
                                 }
                             } catch (e: Exception) {
                                 // 接続切断時はループを抜ける
