@@ -10,7 +10,8 @@ import java.util.Locale
 
 class VaultManager(private val context: Context) {
     private val vaultDir = File(context.filesDir, "vault")
-    private val xorKey: Byte = 0x5A
+    // ★修正：StealthCameraService側と暗号化キーを完全に一致させる (0x5A -> 0xAA)
+    private val xorKey: Byte = 0xAA.toByte()
 
     init {
         // vaultディレクトリの作成
@@ -80,7 +81,7 @@ class VaultManager(private val context: Context) {
         if (!datFile.exists()) return null
         // 証拠隠滅を容易にするため、復号されたファイルはキャッシュディレクトリに一時展開
         val tempPlaybackFile = File(context.cacheDir, "playback_${System.currentTimeMillis()}.mp4")
-        
+
         try {
             FileInputStream(datFile).use { fis ->
                 FileOutputStream(tempPlaybackFile).use { fos ->
