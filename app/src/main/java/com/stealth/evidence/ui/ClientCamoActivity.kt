@@ -58,6 +58,7 @@ class ClientCamoActivity : AppCompatActivity() {
     private val httpClient = OkHttpClient()
     private var targetUrl = "http://127.0.0.1:8080"
 
+    // クライアント側で持っている状態
     private var isRecording = false 
     private var isDummyPlaying = false 
     private var isPreviewVisible = false
@@ -66,6 +67,7 @@ class ClientCamoActivity : AppCompatActivity() {
     private val trackList = mutableListOf<TrackInfo>()
     private var currentTrackIndex = 0
 
+    // UIアニメーション（ダミーのシークバー）用
     private val handler = Handler(Looper.getMainLooper())
     private var progressValue = 0
     private val progressRunnable = object : Runnable {
@@ -75,6 +77,16 @@ class ClientCamoActivity : AppCompatActivity() {
                 progressBarCamo.progress = progressValue
                 handler.postDelayed(this, 1000)
             }
+        }
+    }
+
+    // ★追加：リアルタイムでサーバーの状態（録画中かどうか、動画リスト）を監視するタイマー
+    private val statusSyncHandler = Handler(Looper.getMainLooper())
+    private val statusSyncRunnable = object : Runnable {
+        override fun run() {
+            fetchServerStatus()
+            // 2秒ごとに同期
+            statusSyncHandler.postDelayed(this, 2000)
         }
     }
 
@@ -156,19 +168,13 @@ class ClientCamoActivity : AppCompatActivity() {
         }
         
         btnPlayPauseCamo.setOnLongClickListener {
-            isRecording = !isRecording
-            if (isRecording) {
+            // ローカルの状態はいったん変えずにリクエストだけ送る。実際のUI反映は同期処理(statusSync)に任せる。
+            if (!isRecording) {
                 vibrateFeedback(longArrayOf(0, 50)) 
                 sendServerRequest("$targetUrl/start")
-                // 録画中インジケーター：動画(▶)を白く光らせる
-                tvModeSong.setTextColor(Color.parseColor("#888888"))
-                tvModeVideo.setTextColor(Color.parseColor("#FFFFFF"))
             } else {
                 vibrateFeedback(longArrayOf(0, 50, 100, 50)) 
                 sendServerRequest("$targetUrl/stop")
-                // 待機中インジケーター：曲(🎧)を白く光らせる
-                tvModeSong.setTextColor(Color.parseColor("#FFFFFF"))
-                tvModeVideo.setTextColor(Color.parseColor("#888888"))
             }
             true
         }
@@ -187,6 +193,9 @@ class ClientCamoActivity : AppCompatActivity() {
         }
 
         autoScanServer()
+        
+        // リアルタイム同期を開始
+        statusSyncHandler.post(statusSyncRunnable)
     }
 
     private fun vibrateFeedback(pattern: LongArray) {
@@ -200,6 +209,85 @@ class ClientCamoActivity : AppCompatActivity() {
             }
         }
     }
+
+    // ★追加：サーバーに /status を叩いて、録画状態と動画リストをリアルタイムにUIへ反映する処理
+    private fun fetchServerStatus() {
+        if (targetUrl == "http://127.0.0.1:8080") return // 未接続時はスキップ
+        
+        val request = Request.Builder().url("$targetUrl/status").build()
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                // 通信エラー時（電波が途切れた等）
+            }
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val jsonStr = response.body?.string() ?: return
+                    val jsonObject = JSONObject(jsonStr)
+                    
+                    val serverIsRecording = jsonObject.getBoolean("isRecording")
+                    val videosArray = jsonObject.getJSONArray("videos")
+                    
+                    runOnUiThread {
+                        // 1. 録画インジケーターの同期
+                        isRecording = serverIsRecording
+                        if (isRecording) {
+                            tvModeSong.setTextColor(Color.parseColor("#888888"))
+                            tvModeVideo.setTextColor(Color.parseColor("#FFFFFF"))
+                        } else {
+                            tvModeSong.setTextColor(Color.parseColor("#FFFFFF"))
+                            tvModeVideo.setTextColor(Color.parseColor("#888888"))
+                        }
+                        
+                        // 2. ボトムシートの動画リストの同期
+                        updateVideoListUI(videosArray)
+                    }
+                } catch (e: Exception) {}
+            }
+        })
+    }
+
+    // JSON配列からリストビューを構築（ファイル名を「時分秒」として表示）
+    private fun updateVideoListUI(jsonArray: JSONArray) {
+        if (jsonArray.length() == 0) {
+            lvVaultCamo.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listOf("動画なし"))
+            return
+        }
+        
+        val fileNames = mutableListOf<String>()
+        val displayItems = mutableListOf<String>()
+        val trackName = if (trackList.isNotEmpty()) trackList[currentTrackIndex].title else "なんもねえ"
+
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+            val name = obj.getString("name") // 例: 154530.dat
+            val sizeMb = obj.getLong("size") / (1024 * 1024)
+            fileNames.add(name)
+            
+            // "154530.dat" から "15時45分30秒" を抽出して偽装曲名に混ぜる
+            var timeString = ""
+            if (name.length >= 6 && name.endsWith(".dat")) {
+                val h = name.substring(0, 2)
+                val m = name.substring(2, 4)
+                val s = name.substring(4, 6)
+                timeString = "${h}時${m}分${s}秒 "
+            }
+            
+            // 例: "Track 1 : 15時45分30秒 - なんもねえ (15MB)"
+            displayItems.add("Track ${i+1} : $timeString- $trackName (${sizeMb}MB)")
+        }
+        
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayItems)
+        lvVaultCamo.adapter = adapter
+        
+        lvVaultCamo.setOnItemClickListener { _, _, position, _ ->
+            if (fileNames.isNotEmpty()) {
+                val downloadUrl = "$targetUrl/download?name=${fileNames[position]}"
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
+                Toast.makeText(this@ClientCamoActivity, "DL...", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
 
     private fun fetchAppleMusicData() {
         val url = "https://itunes.apple.com/jp/rss/topsongs/limit=20/json"
@@ -290,7 +378,7 @@ class ClientCamoActivity : AppCompatActivity() {
         targetUrl = "http://$ip:8080"
         tvTargetIpCamo.text = "🟢" 
         Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
-        fetchVideoList()
+        // fetchVideoList() は statusSyncRunnable が自動でやるので削除
         if (isPreviewVisible) reloadStream()
     }
 
@@ -339,46 +427,10 @@ class ClientCamoActivity : AppCompatActivity() {
         })
     }
 
-    private fun fetchVideoList() {
-        val request = Request.Builder().url("$targetUrl/videos").build()
-        httpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {}
-            override fun onResponse(call: Call, response: Response) {
-                val jsonStr = response.body?.string() ?: ""
-                runOnUiThread {
-                    try {
-                        val jsonArray = JSONArray(jsonStr)
-                        if (jsonArray.length() == 0) return@runOnUiThread
-                        
-                        val fileNames = mutableListOf<String>()
-                        val displayItems = mutableListOf<String>()
-                        for (i in 0 until jsonArray.length()) {
-                            val obj = jsonArray.getJSONObject(i)
-                            val name = obj.getString("name")
-                            val sizeMb = obj.getLong("size") / (1024 * 1024)
-                            fileNames.add(name)
-                            
-                            val trackName = if (trackList.isNotEmpty()) trackList[currentTrackIndex].title else "なんもねえ"
-                            displayItems.add("Track ${i+1} : $trackName (${sizeMb}MB)")
-                        }
-                        
-                        val adapter = ArrayAdapter(this@ClientCamoActivity, android.R.layout.simple_list_item_1, displayItems)
-                        lvVaultCamo.adapter = adapter
-                        
-                        lvVaultCamo.setOnItemClickListener { _, _, position, _ ->
-                            val downloadUrl = "$targetUrl/download?name=${fileNames[position]}"
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
-                            Toast.makeText(this@ClientCamoActivity, "DL...", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {}
-                }
-            }
-        })
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         webViewCamo.destroy()
         handler.removeCallbacks(progressRunnable)
+        statusSyncHandler.removeCallbacks(statusSyncRunnable) // ★追加：同期タイマーの停止
     }
 }
