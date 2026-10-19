@@ -11,8 +11,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.ImageFormat
 import android.hardware.camera2.*
-import android.media.Image
 import android.media.ImageReader
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -21,7 +21,7 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import java.io.File
-import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,15 +45,14 @@ class StealthCameraService : Service() {
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     private var imageReader: ImageReader? = null
+    private var mediaRecorder: MediaRecorder? = null
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
 
-    // ★修正：Ktorベースの新しいサーバーを保持する変数を追加
     private var webServer: EmbeddedServer? = null
 
     private var isRecording = false
     private var currentVideoFile: File? = null
-    private var videoOutputStream: FileOutputStream? = null
 
     private var isFrontCamera = false
 
@@ -70,7 +69,6 @@ class StealthCameraService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
                 openCamera(isFrontCamera)
                 
-                // ★修正：カメラ起動と同時にサーバーを起動する処理を復活
                 if (webServer == null) {
                     webServer = EmbeddedServer(applicationContext)
                     webServer?.start()
@@ -91,10 +89,7 @@ class StealthCameraService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        
-        // ★修正：サービス終了時にサーバーも安全にシャットダウンする
         webServer?.stop()
-        
         closeCamera()
         stopBackgroundThread()
     }
@@ -150,7 +145,12 @@ class StealthCameraService : Service() {
 
     private fun startRecording() {
         if (isRecording) return
-        isRecording = true
+
+        // マイク権限チェック（MediaRecorderには必須）
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "RECORD_AUDIO permission is missing.")
+            return
+        }
 
         try {
             val dir = File(filesDir, "vault")
@@ -159,14 +159,41 @@ class StealthCameraService : Service() {
             val sdf = SimpleDateFormat("HHmmss", Locale.getDefault())
             val timeString = sdf.format(Date())
             val fileName = "$timeString.dat"
-
             currentVideoFile = File(dir, fileName)
-            videoOutputStream = FileOutputStream(currentVideoFile)
 
-            Log.d(TAG, "Recording started: $fileName")
+            mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(this)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+
+            // ★本物のMP4動画としてハードウェアエンコード設定を行う
+            mediaRecorder?.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setOutputFile(currentVideoFile!!.absolutePath)
+                setVideoEncodingBitRate(5000000) // 5Mbps
+                setVideoFrameRate(30)
+                setVideoSize(640, 480)
+                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+
+                val rotation = if (isFrontCamera) 270 else 90
+                setOrientationHint(rotation)
+
+                prepare()
+            }
+
+            // 録画用Surfaceを含めてカメラセッションを再構築
+            startCaptureSession(includeRecording = true)
+
         } catch (e: Exception) {
             e.printStackTrace()
             isRecording = false
+            mediaRecorder?.release()
+            mediaRecorder = null
         }
     }
 
@@ -175,30 +202,50 @@ class StealthCameraService : Service() {
         isRecording = false
 
         try {
-            videoOutputStream?.flush()
-            videoOutputStream?.close()
+            mediaRecorder?.stop()
+        } catch (e: RuntimeException) {
+            // 開始直後に停止した場合などの例外回避
+            e.printStackTrace()
+            currentVideoFile?.delete()
+        }
 
-            currentVideoFile?.let { encryptFileHeader(it) }
-
-            Log.d(TAG, "Recording stopped: ${currentVideoFile?.name}")
+        try {
+            mediaRecorder?.reset()
+            mediaRecorder?.release()
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
-            videoOutputStream = null
-            currentVideoFile = null
+            mediaRecorder = null
+        }
+
+        // 録画完了後、ファイルの先頭ヘッダーを暗号化
+        currentVideoFile?.takeIf { it.exists() }?.let { encryptFileHeader(it) }
+        Log.d(TAG, "Recording stopped: ${currentVideoFile?.name}")
+        currentVideoFile = null
+
+        // ストリーミング専用のセッションに戻す
+        if (cameraDevice != null) {
+            startCaptureSession(includeRecording = false)
         }
     }
 
+    // ★重要変更：巨大な動画ファイルをメモリに読み込まず、ディスク上で直接先頭だけ暗号化する（OOM対策）
     private fun encryptFileHeader(file: File) {
-        if (!file.exists()) return
+        if (!file.exists() || file.length() == 0L) return
         try {
-            val data = file.readBytes()
-            val headerSize = 256.coerceAtMost(data.size)
-            val xorKey = 0xAA.toByte()
-            for (i in 0 until headerSize) {
-                data[i] = (data[i].toInt() xor xorKey.toInt()).toByte()
+            RandomAccessFile(file, "rw").use { raf ->
+                val headerSize = 256.coerceAtMost(raf.length().toInt())
+                val buffer = ByteArray(headerSize)
+                raf.readFully(buffer)
+
+                val xorKey = 0xAA.toByte()
+                for (i in 0 until headerSize) {
+                    buffer[i] = (buffer[i].toInt() xor xorKey.toInt()).toByte()
+                }
+
+                raf.seek(0) // 先頭に戻る
+                raf.write(buffer) // 上書き
             }
-            file.writeBytes(data)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -223,10 +270,27 @@ class StealthCameraService : Service() {
 
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
 
+            // ストリーミング用のImageReaderは一度だけ生成する
+            if (imageReader != null) {
+                imageReader?.close()
+            }
+            imageReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 2).apply {
+                setOnImageAvailableListener({ reader ->
+                    val image = reader.acquireLatestImage()
+                    if (image != null) {
+                        val buffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        latestJpeg = bytes
+                        image.close()
+                    }
+                }, backgroundHandler)
+            }
+
             manager.openCamera(finalCameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     cameraDevice = camera
-                    startCaptureSession()
+                    startCaptureSession(includeRecording = false)
                 }
                 override fun onDisconnected(camera: CameraDevice) { camera.close() }
                 override fun onError(camera: CameraDevice, error: Int) { camera.close() }
@@ -236,48 +300,54 @@ class StealthCameraService : Service() {
         }
     }
 
-    private fun startCaptureSession() {
+    private fun startCaptureSession(includeRecording: Boolean) {
         cameraDevice?.let { camera ->
-            imageReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 2).apply {
-                setOnImageAvailableListener({ reader ->
-                    val image = reader.acquireLatestImage()
-                    if (image != null) {
-                        val buffer = image.planes[0].buffer
-                        val bytes = ByteArray(buffer.remaining())
-                        buffer.get(bytes)
-
-                        // EmbeddedServer から取得できるようにCompanion objectの変数に格納
-                        latestJpeg = bytes
-
-                        if (isRecording && videoOutputStream != null) {
-                            try {
-                                videoOutputStream?.write(bytes)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }
-                        image.close()
-                    }
-                }, backgroundHandler)
-            }
+            captureSession?.close()
+            captureSession = null
 
             try {
-                val requestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-                requestBuilder.addTarget(imageReader!!.surface)
+                val template = if (includeRecording) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW
+                val requestBuilder = camera.createCaptureRequest(template)
 
                 val rotation = if (isFrontCamera) 270 else 90
                 requestBuilder.set(CaptureRequest.JPEG_ORIENTATION, rotation)
 
+                val surfaces = mutableListOf<android.view.Surface>()
+
+                // 常にストリーミング用のJPEGサーフェスは含める
+                imageReader?.surface?.let {
+                    requestBuilder.addTarget(it)
+                    surfaces.add(it)
+                }
+
+                // 録画フラグが立っている場合はMP4エンコーダーのサーフェスも追加
+                if (includeRecording && mediaRecorder != null) {
+                    val recordSurface = mediaRecorder!!.surface
+                    requestBuilder.addTarget(recordSurface)
+                    surfaces.add(recordSurface)
+                }
+
                 camera.createCaptureSession(
-                    listOf(imageReader!!.surface),
+                    surfaces,
                     object : CameraCaptureSession.StateCallback() {
                         override fun onConfigured(session: CameraCaptureSession) {
                             captureSession = session
                             try {
                                 session.setRepeatingRequest(requestBuilder.build(), null, backgroundHandler)
-                            } catch (e: CameraAccessException) { e.printStackTrace() }
+                                
+                                // セッション構築完了後に録画をスタートさせる
+                                if (includeRecording) {
+                                    mediaRecorder?.start()
+                                    isRecording = true
+                                    Log.d(TAG, "MediaRecorder successfully started.")
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                         }
-                        override fun onConfigureFailed(session: CameraCaptureSession) {}
+                        override fun onConfigureFailed(session: CameraCaptureSession) {
+                            Log.e(TAG, "Failed to configure capture session")
+                        }
                     }, null
                 )
             } catch (e: CameraAccessException) {
