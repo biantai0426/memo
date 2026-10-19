@@ -48,6 +48,9 @@ class StealthCameraService : Service() {
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
 
+    // ★修正：Ktorベースの新しいサーバーを保持する変数を追加
+    private var webServer: EmbeddedServer? = null
+
     private var isRecording = false
     private var currentVideoFile: File? = null
     private var videoOutputStream: FileOutputStream? = null
@@ -66,6 +69,12 @@ class StealthCameraService : Service() {
                 val notification = createNotification("システム 待機中...")
                 startForeground(NOTIFICATION_ID, notification)
                 openCamera(isFrontCamera)
+                
+                // ★修正：カメラ起動と同時にサーバーを起動する処理を復活
+                if (webServer == null) {
+                    webServer = EmbeddedServer(applicationContext)
+                    webServer?.start()
+                }
             }
             ACTION_START_RECORDING -> {
                 startRecording()
@@ -82,6 +91,10 @@ class StealthCameraService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        
+        // ★修正：サービス終了時にサーバーも安全にシャットダウンする
+        webServer?.stop()
+        
         closeCamera()
         stopBackgroundThread()
     }
@@ -206,7 +219,6 @@ class StealthCameraService : Service() {
                 }
             }
 
-            // ★修正箇所：null許容(String?)から非null(String)に変換して固定する
             val finalCameraId = targetCameraId ?: manager.cameraIdList[0]
 
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
