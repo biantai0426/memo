@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -17,9 +18,6 @@ import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -28,10 +26,12 @@ import kotlin.system.exitProcess
 
 class EmbeddedServer(private val appContext: Context) {
     private var server: NettyApplicationEngine? = null
+    private val TAG = "EmbeddedServer"
 
     fun start() {
-        CoroutineScope(Dispatchers.IO).launch {
-            server = embeddedServer(Netty, port = 8080) {
+        try {
+            // ★修正1: host = "0.0.0.0" を明記し、LAN内の別端末やブラウザからのアクセスを許可する
+            server = embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
                 routing {
                     get("/") {
                         call.respondText("StealthVault Server is running in STANDBY")
@@ -80,20 +80,17 @@ class EmbeddedServer(private val appContext: Context) {
                     }
 
                     // --- 動画データ（Vault）操作 ---
-                    // 遠隔：動画ファイル一覧の取得（JSON形式で返す）
                     get("/videos") {
                         val vaultManager = VaultManager(appContext)
                         val files = vaultManager.getVaultFiles()
 
                         val jsonList = files.joinToString(prefix = "[", postfix = "]") { file ->
                             val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(file.lastModified()))
-                            // クライアントでパースしやすいように単純なJSON文字列を作る
                             "{\"name\":\"${file.name}\", \"size\":${file.length()}, \"date\":\"$dateStr\"}"
                         }
                         call.respondText(jsonList, ContentType.Application.Json)
                     }
 
-                    // 遠隔：動画ファイルのダウンロード（復号してMP4としてストリーム送信）
                     get("/download") {
                         val fileName = call.request.queryParameters["name"]
                         if (fileName == null) {
@@ -118,7 +115,6 @@ class EmbeddedServer(private val appContext: Context) {
                         val downloadFileName = fileName.replace(".dat", ".mp4")
                         call.response.header("Content-Disposition", "attachment; filename=\"$downloadFileName\"")
 
-                        // 復号されたファイルを送信し、送信が終わったら確実に削除する
                         call.respondOutputStream(ContentType.parse("video/mp4")) {
                             try {
                                 decryptedTemp.inputStream().use { it.copyTo(this) }
@@ -130,20 +126,18 @@ class EmbeddedServer(private val appContext: Context) {
                         }
                     }
 
-                    // 遠隔：自爆機能（データゼロ埋め消去 ＋ アプリ強制終了）
                     get("/kill") {
                         call.respondText("Executing Kill Switch... Wiping all Vault data.")
                         val vaultManager = VaultManager(appContext)
-                        vaultManager.executeSelfDestruct() // ゼロ埋め上書き＆削除を実行
+                        vaultManager.executeSelfDestruct()
 
-                        Thread.sleep(1000) // クライアントに返答を返す猶予
+                        Thread.sleep(1000)
                         exitProcess(0)
                     }
 
                     // --- 映像ストリーミング（MJPEG配信） ---
                     get("/stream") {
                         call.response.header("Cache-Control", "no-cache")
-                        // ★修正1: Boundary文字列をNanoHTTPD時代の "--BoundaryString" に完全に一致させる
                         call.respondOutputStream(ContentType.parse("multipart/x-mixed-replace; boundary=--BoundaryString")) {
                             val out: OutputStream = this
                             try {
@@ -157,17 +151,22 @@ class EmbeddedServer(private val appContext: Context) {
                                         out.write("\r\n".toByteArray())
                                         out.flush()
                                     }
-                                    // ★修正2: 30fpsの待機時間 (33ms) に最適化し、カクつきと詰まりを解消
                                     Thread.sleep(33)
                                 }
                             } catch (e: Exception) {
-                                // 接続切断時はループを抜ける
+                                // 接続切断
                             }
                         }
                     }
                 }
             }
-            server?.start(wait = true)
+            // ★修正2: コルーチンを使わず、Ktorの標準機能で非同期バックグラウンド起動させる（wait = false）
+            server?.start(wait = false)
+            Log.d(TAG, "Ktor Server successfully started on 0.0.0.0:8080")
+
+        } catch (e: Exception) {
+            // ★起動失敗時にLogcatへエラーを出力させる
+            Log.e(TAG, "Failed to start Ktor Server: ${e.message}", e)
         }
     }
 
