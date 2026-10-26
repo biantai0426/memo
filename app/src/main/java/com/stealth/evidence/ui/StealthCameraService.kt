@@ -28,6 +28,13 @@ import java.util.Locale
 
 class StealthCameraService : Service() {
 
+    enum class RecordState {
+        IDLE,
+        STARTING,
+        RECORDING,
+        STOPPING
+    }
+
     companion object {
         const val ACTION_START_STANDBY = "ACTION_START_STANDBY"
         const val ACTION_START_RECORDING = "ACTION_START_RECORDING"
@@ -37,7 +44,6 @@ class StealthCameraService : Service() {
         private const val CHANNEL_ID = "stealth_camera_channel"
         private const val TAG = "StealthService"
 
-        // EmbeddedServerのストリーミング配信用に最新のJPEGフレームを保持
         @Volatile
         var latestJpeg: ByteArray? = null
     }
@@ -51,7 +57,8 @@ class StealthCameraService : Service() {
 
     private var webServer: EmbeddedServer? = null
 
-    private var isRecording = false
+    @Volatile
+    private var recordState = RecordState.IDLE
     private var currentVideoFile: File? = null
 
     private var isFrontCamera = false
@@ -68,7 +75,7 @@ class StealthCameraService : Service() {
                 val notification = createNotification("システム 待機中...")
                 startForeground(NOTIFICATION_ID, notification)
                 openCamera(isFrontCamera)
-                
+
                 if (webServer == null) {
                     webServer = EmbeddedServer(applicationContext)
                     webServer?.start()
@@ -138,17 +145,23 @@ class StealthCameraService : Service() {
     }
 
     private fun switchCamera() {
+        if (recordState != RecordState.IDLE) return
         isFrontCamera = !isFrontCamera
         closeCamera()
         openCamera(isFrontCamera)
     }
 
+    @Synchronized
     private fun startRecording() {
-        if (isRecording) return
+        if (recordState != RecordState.IDLE) {
+            Log.w(TAG, "startRecording ignored: state is $recordState")
+            return
+        }
+        recordState = RecordState.STARTING
 
-        // マイク権限チェック（MediaRecorderには必須）
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            Log.e(TAG, "RECORD_AUDIO permission is missing.")
+            Log.e(TAG, "RECORD_AUDIO permission missing")
+            recordState = RecordState.IDLE
             return
         }
 
@@ -168,13 +181,12 @@ class StealthCameraService : Service() {
                 MediaRecorder()
             }
 
-            // ★本物のMP4動画としてハードウェアエンコード設定を行う
             mediaRecorder?.apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setVideoSource(MediaRecorder.VideoSource.SURFACE)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setOutputFile(currentVideoFile!!.absolutePath)
-                setVideoEncodingBitRate(5000000) // 5Mbps
+                setVideoEncodingBitRate(5000000)
                 setVideoFrameRate(30)
                 setVideoSize(640, 480)
                 setVideoEncoder(MediaRecorder.VideoEncoder.H264)
@@ -186,50 +198,76 @@ class StealthCameraService : Service() {
                 prepare()
             }
 
-            // 録画用Surfaceを含めてカメラセッションを再構築
             startCaptureSession(includeRecording = true)
 
         } catch (e: Exception) {
-            e.printStackTrace()
-            isRecording = false
+            Log.e(TAG, "Failed to startRecording", e)
             mediaRecorder?.release()
             mediaRecorder = null
+            currentVideoFile = null
+            recordState = RecordState.IDLE
         }
     }
 
+    @Synchronized
     private fun stopRecording() {
-        if (!isRecording) return
-        isRecording = false
-
-        try {
-            mediaRecorder?.stop()
-        } catch (e: RuntimeException) {
-            // 開始直後に停止した場合などの例外回避
-            e.printStackTrace()
-            currentVideoFile?.delete()
+        if (recordState != RecordState.RECORDING) {
+            Log.w(TAG, "stopRecording ignored: state is $recordState")
+            return
         }
+        recordState = RecordState.STOPPING
 
-        try {
-            mediaRecorder?.reset()
-            mediaRecorder?.release()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            mediaRecorder = null
-        }
+        backgroundHandler?.post {
+            try {
+                // 1. カメラからの新規フレーム流入を遮断
+                try {
+                    captureSession?.stopRepeating()
+                } catch (e: Exception) {
+                    Log.w(TAG, "stopRepeating failed", e)
+                }
 
-        // 録画完了後、ファイルの先頭ヘッダーを暗号化
-        currentVideoFile?.takeIf { it.exists() }?.let { encryptFileHeader(it) }
-        Log.d(TAG, "Recording stopped: ${currentVideoFile?.name}")
-        currentVideoFile = null
+                // 2. バッファ書き出しの猶予
+                Thread.sleep(100)
 
-        // ストリーミング専用のセッションに戻す
-        if (cameraDevice != null) {
-            startCaptureSession(includeRecording = false)
+                // 3. MediaRecorderを正常停止（moovアトムの書き込み完了）
+                try {
+                    mediaRecorder?.stop()
+                } catch (e: RuntimeException) {
+                    Log.e(TAG, "mediaRecorder.stop failed", e)
+                    currentVideoFile?.delete()
+                }
+
+                try {
+                    mediaRecorder?.reset()
+                    mediaRecorder?.release()
+                } catch (e: Exception) {
+                    Log.w(TAG, "mediaRecorder release error", e)
+                } finally {
+                    mediaRecorder = null
+                }
+
+                // 4. ファイルクローズ後に先頭256バイトを暗号化
+                val savedFile = currentVideoFile
+                if (savedFile != null && savedFile.exists() && savedFile.length() > 0L) {
+                    encryptFileHeader(savedFile)
+                    Log.d(TAG, "Recording saved and encrypted: ${savedFile.name} (${savedFile.length()} bytes)")
+                }
+                currentVideoFile = null
+
+                // 5. プレビュー単独セッションに復帰
+                if (cameraDevice != null) {
+                    startCaptureSession(includeRecording = false)
+                } else {
+                    recordState = RecordState.IDLE
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in stopRecording sequence", e)
+                recordState = RecordState.IDLE
+            }
         }
     }
 
-    // ★重要変更：巨大な動画ファイルをメモリに読み込まず、ディスク上で直接先頭だけ暗号化する（OOM対策）
     private fun encryptFileHeader(file: File) {
         if (!file.exists() || file.length() == 0L) return
         try {
@@ -243,11 +281,11 @@ class StealthCameraService : Service() {
                     buffer[i] = (buffer[i].toInt() xor xorKey.toInt()).toByte()
                 }
 
-                raf.seek(0) // 先頭に戻る
-                raf.write(buffer) // 上書き
+                raf.seek(0)
+                raf.write(buffer)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "encryptFileHeader failed", e)
         }
     }
 
@@ -270,7 +308,6 @@ class StealthCameraService : Service() {
 
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
 
-            // ストリーミング用のImageReaderは一度だけ生成する
             if (imageReader != null) {
                 imageReader?.close()
             }
@@ -314,13 +351,11 @@ class StealthCameraService : Service() {
 
                 val surfaces = mutableListOf<android.view.Surface>()
 
-                // 常にストリーミング用のJPEGサーフェスは含める
                 imageReader?.surface?.let {
                     requestBuilder.addTarget(it)
                     surfaces.add(it)
                 }
 
-                // 録画フラグが立っている場合はMP4エンコーダーのサーフェスも追加
                 if (includeRecording && mediaRecorder != null) {
                     val recordSurface = mediaRecorder!!.surface
                     requestBuilder.addTarget(recordSurface)
@@ -334,24 +369,28 @@ class StealthCameraService : Service() {
                             captureSession = session
                             try {
                                 session.setRepeatingRequest(requestBuilder.build(), null, backgroundHandler)
-                                
-                                // セッション構築完了後に録画をスタートさせる
+
                                 if (includeRecording) {
                                     mediaRecorder?.start()
-                                    isRecording = true
-                                    Log.d(TAG, "MediaRecorder successfully started.")
+                                    recordState = RecordState.RECORDING
+                                    Log.d(TAG, "Recording started successfully")
+                                } else {
+                                    recordState = RecordState.IDLE
                                 }
                             } catch (e: Exception) {
-                                e.printStackTrace()
+                                Log.e(TAG, "Failed in onConfigured", e)
+                                recordState = RecordState.IDLE
                             }
                         }
                         override fun onConfigureFailed(session: CameraCaptureSession) {
-                            Log.e(TAG, "Failed to configure capture session")
+                            Log.e(TAG, "Configure failed")
+                            recordState = RecordState.IDLE
                         }
-                    }, null
+                    }, backgroundHandler
                 )
             } catch (e: CameraAccessException) {
-                e.printStackTrace()
+                Log.e(TAG, "startCaptureSession error", e)
+                recordState = RecordState.IDLE
             }
         }
     }
