@@ -30,11 +30,27 @@ class EmbeddedServer(private val appContext: Context) {
 
     fun start() {
         try {
-            // ★修正1: host = "0.0.0.0" を明記し、LAN内の別端末やブラウザからのアクセスを許可する
             server = embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
                 routing {
                     get("/") {
                         call.respondText("StealthVault Server is running in STANDBY")
+                    }
+
+                    // --- サーバー・録画ステータス取得 ---
+                    get("/status") {
+                        val state = StealthCameraService.currentRecordState
+                        val isRec = state == StealthCameraService.RecordState.RECORDING
+
+                        val vaultManager = VaultManager(appContext)
+                        val files = vaultManager.getVaultFiles()
+
+                        val jsonList = files.joinToString(prefix = "[", postfix = "]") { file ->
+                            val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(file.lastModified()))
+                            "{\"name\":\"${file.name}\", \"size\":${file.length()}, \"date\":\"$dateStr\"}"
+                        }
+
+                        val responseJson = "{\"status\":\"${state.name}\", \"isRecording\":$isRec, \"videos\":$jsonList}"
+                        call.respondText(responseJson, ContentType.Application.Json)
                     }
 
                     // --- カメラ・録画操作 ---
@@ -160,12 +176,10 @@ class EmbeddedServer(private val appContext: Context) {
                     }
                 }
             }
-            // ★修正2: コルーチンを使わず、Ktorの標準機能で非同期バックグラウンド起動させる（wait = false）
             server?.start(wait = false)
             Log.d(TAG, "Ktor Server successfully started on 0.0.0.0:8080")
 
         } catch (e: Exception) {
-            // ★起動失敗時にLogcatへエラーを出力させる
             Log.e(TAG, "Failed to start Ktor Server: ${e.message}", e)
         }
     }

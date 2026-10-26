@@ -46,6 +46,9 @@ class StealthCameraService : Service() {
 
         @Volatile
         var latestJpeg: ByteArray? = null
+
+        @Volatile
+        var currentRecordState: RecordState = RecordState.IDLE
     }
 
     private var cameraDevice: CameraDevice? = null
@@ -57,8 +60,6 @@ class StealthCameraService : Service() {
 
     private var webServer: EmbeddedServer? = null
 
-    @Volatile
-    private var recordState = RecordState.IDLE
     private var currentVideoFile: File? = null
 
     private var isFrontCamera = false
@@ -145,7 +146,7 @@ class StealthCameraService : Service() {
     }
 
     private fun switchCamera() {
-        if (recordState != RecordState.IDLE) return
+        if (currentRecordState != RecordState.IDLE) return
         isFrontCamera = !isFrontCamera
         closeCamera()
         openCamera(isFrontCamera)
@@ -153,15 +154,15 @@ class StealthCameraService : Service() {
 
     @Synchronized
     private fun startRecording() {
-        if (recordState != RecordState.IDLE) {
-            Log.w(TAG, "startRecording ignored: state is $recordState")
+        if (currentRecordState != RecordState.IDLE) {
+            Log.w(TAG, "startRecording ignored: state is $currentRecordState")
             return
         }
-        recordState = RecordState.STARTING
+        currentRecordState = RecordState.STARTING
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "RECORD_AUDIO permission missing")
-            recordState = RecordState.IDLE
+            currentRecordState = RecordState.IDLE
             return
         }
 
@@ -205,17 +206,17 @@ class StealthCameraService : Service() {
             mediaRecorder?.release()
             mediaRecorder = null
             currentVideoFile = null
-            recordState = RecordState.IDLE
+            currentRecordState = RecordState.IDLE
         }
     }
 
     @Synchronized
     private fun stopRecording() {
-        if (recordState != RecordState.RECORDING) {
-            Log.w(TAG, "stopRecording ignored: state is $recordState")
+        if (currentRecordState != RecordState.RECORDING) {
+            Log.w(TAG, "stopRecording ignored: state is $currentRecordState")
             return
         }
-        recordState = RecordState.STOPPING
+        currentRecordState = RecordState.STOPPING
 
         backgroundHandler?.post {
             try {
@@ -258,12 +259,12 @@ class StealthCameraService : Service() {
                 if (cameraDevice != null) {
                     startCaptureSession(includeRecording = false)
                 } else {
-                    recordState = RecordState.IDLE
+                    currentRecordState = RecordState.IDLE
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error in stopRecording sequence", e)
-                recordState = RecordState.IDLE
+                currentRecordState = RecordState.IDLE
             }
         }
     }
@@ -372,25 +373,25 @@ class StealthCameraService : Service() {
 
                                 if (includeRecording) {
                                     mediaRecorder?.start()
-                                    recordState = RecordState.RECORDING
+                                    currentRecordState = RecordState.RECORDING
                                     Log.d(TAG, "Recording started successfully")
                                 } else {
-                                    recordState = RecordState.IDLE
+                                    currentRecordState = RecordState.IDLE
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed in onConfigured", e)
-                                recordState = RecordState.IDLE
+                                currentRecordState = RecordState.IDLE
                             }
                         }
                         override fun onConfigureFailed(session: CameraCaptureSession) {
                             Log.e(TAG, "Configure failed")
-                            recordState = RecordState.IDLE
+                            currentRecordState = RecordState.IDLE
                         }
                     }, backgroundHandler
                 )
             } catch (e: CameraAccessException) {
                 Log.e(TAG, "startCaptureSession error", e)
-                recordState = RecordState.IDLE
+                currentRecordState = RecordState.IDLE
             }
         }
     }
