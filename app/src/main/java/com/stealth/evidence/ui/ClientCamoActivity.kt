@@ -41,8 +41,8 @@ class ClientCamoActivity : AppCompatActivity() {
 
     private lateinit var tvTargetIpCamo: TextView
     private lateinit var btnConfigIpCamo: ImageView
-    private lateinit var tvModeSong: TextView
-    private lateinit var tvModeVideo: TextView
+    private lateinit var ivModeSong: ImageView
+    private lateinit var ivModeVideo: ImageView
     private lateinit var jacketContainer: FrameLayout
     private lateinit var imgJacket: ImageView
     private lateinit var webViewCamo: WebView
@@ -58,16 +58,14 @@ class ClientCamoActivity : AppCompatActivity() {
     private val httpClient = OkHttpClient()
     private var targetUrl = "http://127.0.0.1:8080"
 
-    // クライアント側で持っている状態
-    private var isRecording = false 
-    private var isDummyPlaying = false 
+    private var isRecording = false
+    private var isDummyPlaying = false
     private var isPreviewVisible = false
 
     data class TrackInfo(val title: String, val artist: String, val imageUrl: String)
     private val trackList = mutableListOf<TrackInfo>()
     private var currentTrackIndex = 0
 
-    // UIアニメーション（ダミーのシークバー）用
     private val handler = Handler(Looper.getMainLooper())
     private var progressValue = 0
     private val progressRunnable = object : Runnable {
@@ -80,12 +78,10 @@ class ClientCamoActivity : AppCompatActivity() {
         }
     }
 
-    // ★追加：リアルタイムでサーバーの状態（録画中かどうか、動画リスト）を監視するタイマー
     private val statusSyncHandler = Handler(Looper.getMainLooper())
     private val statusSyncRunnable = object : Runnable {
         override fun run() {
             fetchServerStatus()
-            // 2秒ごとに同期
             statusSyncHandler.postDelayed(this, 2000)
         }
     }
@@ -97,8 +93,8 @@ class ClientCamoActivity : AppCompatActivity() {
 
         tvTargetIpCamo = findViewById(R.id.tvTargetIpCamo)
         btnConfigIpCamo = findViewById(R.id.btnConfigIpCamo)
-        tvModeSong = findViewById(R.id.tvModeSong)
-        tvModeVideo = findViewById(R.id.tvModeVideo)
+        ivModeSong = findViewById(R.id.ivModeSong)
+        ivModeVideo = findViewById(R.id.ivModeVideo)
         jacketContainer = findViewById(R.id.jacketContainer)
         imgJacket = findViewById(R.id.imgJacket)
         webViewCamo = findViewById(R.id.webViewCamo)
@@ -148,7 +144,7 @@ class ClientCamoActivity : AppCompatActivity() {
                 updateTrackUI()
             }
         }
-        
+
         btnPrevCamo.setOnLongClickListener {
             vibrateFeedback(longArrayOf(0, 50))
             sendServerRequest("$targetUrl/switch")
@@ -166,14 +162,13 @@ class ClientCamoActivity : AppCompatActivity() {
                 handler.removeCallbacks(progressRunnable)
             }
         }
-        
+
         btnPlayPauseCamo.setOnLongClickListener {
-            // ローカルの状態はいったん変えずにリクエストだけ送る。実際のUI反映は同期処理(statusSync)に任せる。
             if (!isRecording) {
-                vibrateFeedback(longArrayOf(0, 50)) 
+                vibrateFeedback(longArrayOf(0, 50))
                 sendServerRequest("$targetUrl/start")
             } else {
-                vibrateFeedback(longArrayOf(0, 50, 100, 50)) 
+                vibrateFeedback(longArrayOf(0, 50, 100, 50))
                 sendServerRequest("$targetUrl/stop")
             }
             true
@@ -185,7 +180,7 @@ class ClientCamoActivity : AppCompatActivity() {
                 updateTrackUI()
             }
         }
-        
+
         btnNextCamo.setOnLongClickListener {
             vibrateFeedback(longArrayOf(0, 50))
             sendServerRequest("$targetUrl/notify")
@@ -193,8 +188,6 @@ class ClientCamoActivity : AppCompatActivity() {
         }
 
         autoScanServer()
-        
-        // リアルタイム同期を開始
         statusSyncHandler.post(statusSyncRunnable)
     }
 
@@ -210,60 +203,71 @@ class ClientCamoActivity : AppCompatActivity() {
         }
     }
 
-    // ★追加：サーバーに /status を叩いて、録画状態と動画リストをリアルタイムにUIへ反映する処理
     private fun fetchServerStatus() {
-        if (targetUrl == "http://127.0.0.1:8080") return // 未接続時はスキップ
-        
+        if (targetUrl == "http://127.0.0.1:8080") return
+
         val request = Request.Builder().url("$targetUrl/status").build()
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                // 通信エラー時（電波が途切れた等）
+                runOnUiThread {
+                    tvTargetIpCamo.text = "⚫"
+                }
             }
             override fun onResponse(call: Call, response: Response) {
                 try {
                     val jsonStr = response.body?.string() ?: return
                     val jsonObject = JSONObject(jsonStr)
-                    
-                    val serverIsRecording = jsonObject.getBoolean("isRecording")
-                    val videosArray = jsonObject.getJSONArray("videos")
-                    
+
+                    val status = jsonObject.optString("status", "IDLE")
+                    val serverIsRecording = jsonObject.optBoolean("isRecording", false)
+                    val videosArray = jsonObject.optJSONArray("videos") ?: JSONArray()
+
                     runOnUiThread {
-                        // 1. 録画インジケーターの同期
                         isRecording = serverIsRecording
-                        if (isRecording) {
-                            tvModeSong.setTextColor(Color.parseColor("#888888"))
-                            tvModeVideo.setTextColor(Color.parseColor("#FFFFFF"))
-                        } else {
-                            tvModeSong.setTextColor(Color.parseColor("#FFFFFF"))
-                            tvModeVideo.setTextColor(Color.parseColor("#888888"))
+
+                        when (status) {
+                            "RECORDING" -> {
+                                tvTargetIpCamo.text = "🔴"
+                                ivModeSong.setColorFilter(Color.parseColor("#666666"))
+                                ivModeVideo.setColorFilter(Color.parseColor("#FFFFFF"))
+                            }
+                            "STARTING", "STOPPING" -> {
+                                tvTargetIpCamo.text = "🟡"
+                            }
+                            else -> {
+                                tvTargetIpCamo.text = "🟢"
+                                ivModeSong.setColorFilter(Color.parseColor("#FFFFFF"))
+                                ivModeVideo.setColorFilter(Color.parseColor("#666666"))
+                            }
                         }
-                        
-                        // 2. ボトムシートの動画リストの同期
+
                         updateVideoListUI(videosArray)
                     }
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        tvTargetIpCamo.text = "⚫"
+                    }
+                }
             }
         })
     }
 
-    // JSON配列からリストビューを構築（ファイル名を「時分秒」として表示）
     private fun updateVideoListUI(jsonArray: JSONArray) {
         if (jsonArray.length() == 0) {
             lvVaultCamo.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listOf("動画なし"))
             return
         }
-        
+
         val fileNames = mutableListOf<String>()
         val displayItems = mutableListOf<String>()
         val trackName = if (trackList.isNotEmpty()) trackList[currentTrackIndex].title else "なんもねえ"
 
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
-            val name = obj.getString("name") // 例: 154530.dat
+            val name = obj.getString("name")
             val sizeMb = obj.getLong("size") / (1024 * 1024)
             fileNames.add(name)
-            
-            // "154530.dat" から "15時45分30秒" を抽出して偽装曲名に混ぜる
+
             var timeString = ""
             if (name.length >= 6 && name.endsWith(".dat")) {
                 val h = name.substring(0, 2)
@@ -271,14 +275,13 @@ class ClientCamoActivity : AppCompatActivity() {
                 val s = name.substring(4, 6)
                 timeString = "${h}時${m}分${s}秒 "
             }
-            
-            // 例: "Track 1 : 15時45分30秒 - なんもねえ (15MB)"
+
             displayItems.add("Track ${i+1} : $timeString- $trackName (${sizeMb}MB)")
         }
-        
+
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayItems)
         lvVaultCamo.adapter = adapter
-        
+
         lvVaultCamo.setOnItemClickListener { _, _, position, _ ->
             if (fileNames.isNotEmpty()) {
                 val downloadUrl = "$targetUrl/download?name=${fileNames[position]}"
@@ -288,11 +291,10 @@ class ClientCamoActivity : AppCompatActivity() {
         }
     }
 
-
     private fun fetchAppleMusicData() {
         val url = "https://itunes.apple.com/jp/rss/topsongs/limit=20/json"
         val request = Request.Builder().url(url).build()
-        
+
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {}
             override fun onResponse(call: Call, response: Response) {
@@ -300,7 +302,7 @@ class ClientCamoActivity : AppCompatActivity() {
                     val jsonStr = response.body?.string() ?: return
                     val jsonObject = JSONObject(jsonStr)
                     val entries = jsonObject.getJSONObject("feed").getJSONArray("entry")
-                    
+
                     trackList.clear()
                     for (i in 0 until entries.length()) {
                         val entry = entries.getJSONObject(i)
@@ -309,10 +311,10 @@ class ClientCamoActivity : AppCompatActivity() {
                         val images = entry.getJSONArray("im:image")
                         var imageUrl = images.getJSONObject(images.length() - 1).getString("label")
                         imageUrl = imageUrl.replace("170x170", "600x600")
-                        
+
                         trackList.add(TrackInfo(title, artist, imageUrl))
                     }
-                    
+
                     if (trackList.isNotEmpty()) {
                         currentTrackIndex = 0
                         runOnUiThread { updateTrackUI() }
@@ -325,11 +327,11 @@ class ClientCamoActivity : AppCompatActivity() {
     private fun updateTrackUI() {
         if (trackList.isEmpty()) return
         val currentTrack = trackList[currentTrackIndex]
-        
+
         tvTrackTitle.text = "${currentTrack.title} ＞"
         tvTrackArtist.text = currentTrack.artist
-        tvMixListTitle.text = "「${currentTrack.title}」を元にしたミックスリスト"
-        
+        tvMixListTitle.text = "「${currentTrack.title}」 を元にしたミックスリスト"
+
         downloadAndSetImage(currentTrack.imageUrl)
     }
 
@@ -376,9 +378,8 @@ class ClientCamoActivity : AppCompatActivity() {
 
     private fun setTargetIp(ip: String) {
         targetUrl = "http://$ip:8080"
-        tvTargetIpCamo.text = "🟢" 
+        tvTargetIpCamo.text = "🟢"
         Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
-        // fetchVideoList() は statusSyncRunnable が自動でやるので削除
         if (isPreviewVisible) reloadStream()
     }
 
@@ -414,7 +415,7 @@ class ClientCamoActivity : AppCompatActivity() {
                 } catch (e: Exception) {}
             }
             if (!found) {
-                runOnUiThread { tvTargetIpCamo.text = "🔴" }
+                runOnUiThread { tvTargetIpCamo.text = "⚫" }
             }
         }.start()
     }
@@ -431,6 +432,6 @@ class ClientCamoActivity : AppCompatActivity() {
         super.onDestroy()
         webViewCamo.destroy()
         handler.removeCallbacks(progressRunnable)
-        statusSyncHandler.removeCallbacks(statusSyncRunnable) // ★追加：同期タイマーの停止
+        statusSyncHandler.removeCallbacks(statusSyncRunnable)
     }
 }

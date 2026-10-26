@@ -20,22 +20,34 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
 
-        <!-- 上部中央のトグル（ここで録画状態をステルス表示） -->
+        <!-- 上部中央のトグル（録画状態をステルス表示：待機中はヘッドホン白、録画中は再生アイコン白） -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:background="@drawable/bg_chip_dark"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="4dp"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
             android:gravity="center_vertical"
             app:layout_constraintTop_toTopOf="@id/btnDown"
             app:layout_constraintBottom_toBottomOf="@id/btnDown"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
-            <!-- 待機中は曲(🎧)が白、録画中は動画(▶)が白になる -->
-            <TextView android:id="@+id/tvModeSong" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🎧" android:textColor="#FFFFFF" android:paddingEnd="12dp"/>
-            <TextView android:id="@+id/tvModeVideo" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="▶" android:textColor="#888888" android:textSize="12sp"/>
+
+            <ImageView
+                android:id="@+id/ivModeSong"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_headphones"
+                app:tint="#FFFFFF"
+                android:layout_marginEnd="16dp" />
+
+            <ImageView
+                android:id="@+id/ivModeVideo"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_play_arrow"
+                app:tint="#666666" />
         </LinearLayout>
 
         <ImageView
@@ -47,18 +59,19 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
+        <!-- サーバー状態インジケーター（🟢 / 🔴 / 🟡 / ⚫） -->
         <TextView
             android:id="@+id/tvTargetIpCamo"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📶"
+            android:text="⚫"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:padding="16dp"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toStartOf="@id/btnConfigIpCamo" />
 
-        <!-- ジャケット画像（角丸） ＆ プレビュー領域 -->
+        <!-- ジャケット画像 ＆ プレビュー領域 -->
         <androidx.cardview.widget.CardView
             android:id="@+id/jacketCard"
             android:layout_width="0dp"
@@ -77,7 +90,7 @@
                 android:id="@+id/jacketContainer"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
-                
+
                 <ImageView
                     android:id="@+id/imgJacket"
                     android:layout_width="match_parent"
@@ -121,7 +134,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- アクションチップ（高評価、低評価など） -->
+        <!-- アクションチップ（ベクターアイコン化） -->
         <HorizontalScrollView
             android:id="@+id/actionScroll"
             android:layout_width="match_parent"
@@ -129,39 +142,102 @@
             android:layout_marginTop="16dp"
             android:scrollbars="none"
             app:layout_constraintTop_toBottomOf="@id/tvTrackArtist">
-            
+
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:paddingHorizontal="24dp">
-                
-                <TextView
+
+                <!-- いいね / 良くないね チップ -->
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:orientation="horizontal"
                     android:background="@drawable/bg_chip_dark"
-                    android:text="👍 6.6万   👎"
-                    android:textColor="#FFFFFF"
-                    android:paddingHorizontal="16dp"
+                    android:paddingHorizontal="14dp"
                     android:paddingVertical="8dp"
-                    android:layout_marginEnd="8dp"/>
-                <TextView
+                    android:gravity="center_vertical"
+                    android:layout_marginEnd="8dp">
+
+                    <ImageView
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:src="@drawable/ic_thumb_up"
+                        app:tint="#FFFFFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="6.6万"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:layout_marginStart="6dp"
+                        android:layout_marginEnd="10dp" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="12dp"
+                        android:background="#444444"
+                        android:layout_marginEnd="10dp" />
+
+                    <ImageView
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:src="@drawable/ic_thumb_down"
+                        app:tint="#FFFFFF" />
+                </LinearLayout>
+
+                <!-- 歌詞 チップ -->
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:orientation="horizontal"
                     android:background="@drawable/bg_chip_dark"
-                    android:text="💬 歌詞"
-                    android:textColor="#FFFFFF"
-                    android:paddingHorizontal="16dp"
+                    android:paddingHorizontal="14dp"
                     android:paddingVertical="8dp"
-                    android:layout_marginEnd="8dp"/>
-                <TextView
+                    android:gravity="center_vertical"
+                    android:layout_marginEnd="8dp">
+
+                    <ImageView
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:src="@drawable/ic_chat"
+                        app:tint="#FFFFFF"
+                        android:layout_marginEnd="6dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="歌詞"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- 保存 チップ -->
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:orientation="horizontal"
                     android:background="@drawable/bg_chip_dark"
-                    android:text="≡ 保存"
-                    android:textColor="#FFFFFF"
-                    android:paddingHorizontal="16dp"
-                    android:paddingVertical="8dp"/>
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="8dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:src="@drawable/ic_playlist_add"
+                        app:tint="#FFFFFF"
+                        android:layout_marginEnd="6dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="保存"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp" />
+                </LinearLayout>
             </LinearLayout>
         </HorizontalScrollView>
 
@@ -206,10 +282,10 @@
             android:layout_marginTop="16dp"
             app:layout_constraintTop_toBottomOf="@id/progressBarCamo">
 
-            <ImageView 
-                android:layout_width="0dp" 
-                android:layout_height="wrap_content" 
-                android:src="@drawable/ic_shuffle" 
+            <ImageView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:src="@drawable/ic_shuffle"
                 android:layout_weight="1"/>
 
             <!-- 戻る ＝ カメラ切替 -->
@@ -225,7 +301,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1">
-                
+
                 <ImageView
                     android:id="@+id/btnPlayPauseCamo"
                     android:layout_width="72dp"
@@ -243,11 +319,11 @@
                 android:layout_height="wrap_content"
                 android:src="@drawable/ic_skip_next"
                 android:layout_weight="1"/>
-                
-            <ImageView 
-                android:layout_width="0dp" 
-                android:layout_height="wrap_content" 
-                android:src="@drawable/ic_repeat" 
+
+            <ImageView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:src="@drawable/ic_repeat"
                 android:layout_weight="1"/>
         </LinearLayout>
 
@@ -281,7 +357,7 @@
             android:textSize="14sp"
             android:gravity="center"
             android:paddingBottom="16dp" />
-            
+
         <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333"/>
 
         <ListView
