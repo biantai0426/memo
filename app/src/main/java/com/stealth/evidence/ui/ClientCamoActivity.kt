@@ -14,13 +14,17 @@ import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebView
-import android.widget.ArrayAdapter
+import android.widget.BaseAdapter
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.SeekBar
 import android.widget.TextView
@@ -56,6 +60,12 @@ class ClientCamoActivity : AppCompatActivity() {
     private lateinit var btnNextCamo: ImageView
     private lateinit var lvVaultCamo: ListView
 
+    // 一括操作バー用コンポーネント
+    private lateinit var layoutBatchBar: LinearLayout
+    private lateinit var cbSelectAll: CheckBox
+    private lateinit var btnBatchDownload: LinearLayout
+    private lateinit var tvBatchDownloadLabel: TextView
+
     private lateinit var prefs: SharedPreferences
     private val PREF_KEY_LAST_IP = "last_connected_ip"
 
@@ -69,6 +79,16 @@ class ClientCamoActivity : AppCompatActivity() {
     data class TrackInfo(val title: String, val artist: String, val imageUrl: String)
     private val trackList = mutableListOf<TrackInfo>()
     private var currentTrackIndex = 0
+
+    // 動画データリストと選択管理
+    data class VaultVideoItem(
+        val fileName: String,
+        val sizeMb: Long,
+        val timeString: String,
+        var isChecked: Boolean = false
+    )
+    private val videoItemList = mutableListOf<VaultVideoItem>()
+    private var videoAdapter: VaultVideoAdapter? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var progressValue = 0
@@ -113,6 +133,11 @@ class ClientCamoActivity : AppCompatActivity() {
         btnNextCamo = findViewById(R.id.btnNextCamo)
         lvVaultCamo = findViewById(R.id.lvVaultCamo)
 
+        layoutBatchBar = findViewById(R.id.layoutBatchBar)
+        cbSelectAll = findViewById(R.id.cbSelectAll)
+        btnBatchDownload = findViewById(R.id.btnBatchDownload)
+        tvBatchDownloadLabel = findViewById(R.id.tvBatchDownloadLabel)
+
         webViewCamo.settings.apply {
             javaScriptEnabled = true
             loadWithOverviewMode = true
@@ -120,6 +145,10 @@ class ClientCamoActivity : AppCompatActivity() {
         }
         webViewCamo.setBackgroundColor(0)
 
+        videoAdapter = VaultVideoAdapter()
+        lvVaultCamo.adapter = videoAdapter
+
+        setupBatchActions()
         fetchAppleMusicData()
 
         btnConfigIpCamo.setOnClickListener { showIpConfigDialog() }
@@ -204,6 +233,69 @@ class ClientCamoActivity : AppCompatActivity() {
         statusSyncHandler.post(statusSyncRunnable)
     }
 
+    private fun setupBatchActions() {
+        cbSelectAll.setOnClickListener {
+            val isChecked = cbSelectAll.isChecked
+            videoItemList.forEach { it.isChecked = isChecked }
+            videoAdapter?.notifyDataSetChanged()
+            updateBatchButtonLabel()
+        }
+
+        btnBatchDownload.setOnClickListener {
+            val selectedItems = videoItemList.filter { it.isChecked }
+            if (selectedItems.isEmpty()) {
+                Toast.makeText(this, "保存する動画を選択してください", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showDownloadOptionsDialog(selectedItems)
+        }
+    }
+
+    private fun updateBatchButtonLabel() {
+        val selectedCount = videoItemList.count { it.isChecked }
+        tvBatchDownloadLabel.text = "保存 ($selectedCount)"
+        cbSelectAll.isChecked = videoItemList.isNotEmpty() && selectedCount == videoItemList.size
+    }
+
+    private fun showDownloadOptionsDialog(selectedItems: List<VaultVideoItem>) {
+        val options = arrayOf(
+            "個別保存 (.mp4 を順次保存)",
+            "ZIP一括保存 (.zip にまとめて保存)"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("保存形式の選択 (${selectedItems.size}件)")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> downloadIndividually(selectedItems)
+                    1 -> downloadAsZip(selectedItems)
+                }
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun downloadIndividually(selectedItems: List<VaultVideoItem>) {
+        Toast.makeText(this, "${selectedItems.size}件の保存を開始します...", Toast.LENGTH_SHORT).show()
+        for (item in selectedItems) {
+            val downloadUrl = "$targetUrl/download?name=${item.fileName}"
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        }
+    }
+
+    private fun downloadAsZip(selectedItems: List<VaultVideoItem>) {
+        val namesParam = selectedItems.joinToString(",") { it.fileName }
+        val downloadUrl = "$targetUrl/download_zip?names=$namesParam"
+        Toast.makeText(this, "ZIPアーカイブの作成・保存を開始します...", Toast.LENGTH_SHORT).show()
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+    }
+
     private fun vibrateFeedback(pattern: LongArray) {
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         if (vibrator.hasVibrator()) {
@@ -266,41 +358,71 @@ class ClientCamoActivity : AppCompatActivity() {
     }
 
     private fun updateVideoListUI(jsonArray: JSONArray) {
-        if (jsonArray.length() == 0) {
-            lvVaultCamo.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listOf("動画なし"))
-            return
-        }
-
-        val fileNames = mutableListOf<String>()
-        val displayItems = mutableListOf<String>()
-        val trackName = if (trackList.isNotEmpty()) trackList[currentTrackIndex].title else "なんもねえ"
+        val checkedFileNames = videoItemList.filter { it.isChecked }.map { it.fileName }.toSet()
+        val newList = mutableListOf<VaultVideoItem>()
 
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
             val name = obj.getString("name")
             val sizeMb = obj.getLong("size") / (1024 * 1024)
-            fileNames.add(name)
 
             var timeString = ""
             if (name.length >= 6 && name.endsWith(".dat")) {
                 val h = name.substring(0, 2)
                 val m = name.substring(2, 4)
                 val s = name.substring(4, 6)
-                timeString = "${h}時${m}分${s}秒 "
+                timeString = "${h}時${m}分${s}秒"
             }
 
-            displayItems.add("Track ${i+1} : $timeString- $trackName (${sizeMb}MB)")
+            val isChecked = checkedFileNames.contains(name)
+            newList.add(VaultVideoItem(name, sizeMb, timeString, isChecked))
         }
 
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayItems)
-        lvVaultCamo.adapter = adapter
+        // リストの中身に差分がある場合のみ反映
+        if (newList.map { "${it.fileName}_${it.sizeMb}" } != videoItemList.map { "${it.fileName}_${it.sizeMb}" }) {
+            videoItemList.clear()
+            videoItemList.addAll(newList)
+            videoAdapter?.notifyDataSetChanged()
+            updateBatchButtonLabel()
+        }
+    }
 
-        lvVaultCamo.setOnItemClickListener { _, _, position, _ ->
-            if (fileNames.isNotEmpty()) {
-                val downloadUrl = "$targetUrl/download?name=${fileNames[position]}"
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
+    private inner class VaultVideoAdapter : BaseAdapter() {
+        override fun getCount(): Int = videoItemList.size
+        override fun getItem(position: Int): Any = videoItemList[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val view = convertView ?: LayoutInflater.from(this@ClientCamoActivity)
+                .inflate(R.layout.item_vault_camo, parent, false)
+
+            val item = videoItemList[position]
+            val cbSelect = view.findViewById<CheckBox>(R.id.cbSelect)
+            val tvItemTitle = view.findViewById<TextView>(R.id.tvItemTitle)
+            val tvItemSubtitle = view.findViewById<TextView>(R.id.tvItemSubtitle)
+            val ivItemDownloadSingle = view.findViewById<ImageView>(R.id.ivItemDownloadSingle)
+
+            val trackName = if (trackList.isNotEmpty()) trackList[currentTrackIndex].title else "なんもねえ"
+            tvItemTitle.text = "Track ${position + 1} : $trackName"
+            tvItemSubtitle.text = "${item.timeString} • ${item.sizeMb}MB"
+            cbSelect.isChecked = item.isChecked
+
+            view.setOnClickListener {
+                item.isChecked = !item.isChecked
+                cbSelect.isChecked = item.isChecked
+                updateBatchButtonLabel()
+            }
+
+            ivItemDownloadSingle.setOnClickListener {
+                val downloadUrl = "$targetUrl/download?name=${item.fileName}"
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
                 Toast.makeText(this@ClientCamoActivity, "DL...", Toast.LENGTH_SHORT).show()
             }
+
+            return view
         }
     }
 
@@ -330,7 +452,10 @@ class ClientCamoActivity : AppCompatActivity() {
 
                     if (trackList.isNotEmpty()) {
                         currentTrackIndex = 0
-                        runOnUiThread { updateTrackUI() }
+                        runOnUiThread {
+                            updateTrackUI()
+                            videoAdapter?.notifyDataSetChanged()
+                        }
                     }
                 } catch (e: Exception) {}
             }
@@ -393,7 +518,6 @@ class ClientCamoActivity : AppCompatActivity() {
         targetUrl = "http://$ip:8080"
         tvTargetIpCamo.text = "🟢"
 
-        // 正常に設定されたIPを永続化
         prefs.edit().putString(PREF_KEY_LAST_IP, ip).apply()
 
         if (showToast) {

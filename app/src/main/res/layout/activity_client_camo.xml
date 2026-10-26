@@ -20,7 +20,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
 
-        <!-- 上部中央のトグル（録画状態をステルス表示：待機中はヘッドホン白、録画中は再生アイコン白） -->
+        <!-- 上部中央のトグル（録画状態をステルス表示） -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -356,14 +356,72 @@
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:gravity="center"
-            android:paddingBottom="16dp" />
+            android:paddingBottom="12dp" />
 
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#333333"/>
+        <!-- 複数選択・一括操作ヘッダーバー -->
+        <LinearLayout
+            android:id="@+id/layoutBatchBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:background="#181818">
+
+            <CheckBox
+                android:id="@+id/cbSelectAll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:buttonTint="#FFFFFF"
+                android:text="すべて選択"
+                android:textColor="#DDDDDD"
+                android:textSize="13sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- 一括ダウンロードボタン -->
+            <LinearLayout
+                android:id="@+id/btnBatchDownload"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/bg_chip_dark"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:src="@drawable/ic_playlist_add"
+                    app:tint="#FFFFFF"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/tvBatchDownloadLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="保存 (0)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#333333"/>
 
         <ListView
             android:id="@+id/lvVaultCamo"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:divider="#222222"
+            android:dividerHeight="1dp" />
 
     </LinearLayout>
 
