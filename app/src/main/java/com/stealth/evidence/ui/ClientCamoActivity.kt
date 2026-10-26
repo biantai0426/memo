@@ -3,6 +3,7 @@ package com.stealth.evidence.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
@@ -55,6 +56,9 @@ class ClientCamoActivity : AppCompatActivity() {
     private lateinit var btnNextCamo: ImageView
     private lateinit var lvVaultCamo: ListView
 
+    private lateinit var prefs: SharedPreferences
+    private val PREF_KEY_LAST_IP = "last_connected_ip"
+
     private val httpClient = OkHttpClient()
     private var targetUrl = "http://127.0.0.1:8080"
 
@@ -90,6 +94,8 @@ class ClientCamoActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_client_camo)
+
+        prefs = getSharedPreferences("stealth_client_prefs", Context.MODE_PRIVATE)
 
         tvTargetIpCamo = findViewById(R.id.tvTargetIpCamo)
         btnConfigIpCamo = findViewById(R.id.btnConfigIpCamo)
@@ -187,7 +193,14 @@ class ClientCamoActivity : AppCompatActivity() {
             true
         }
 
-        autoScanServer()
+        // 前回接続したIPがあれば優先して復元、なければ自動スキャン
+        val savedIp = prefs.getString(PREF_KEY_LAST_IP, null)
+        if (!savedIp.isNullOrEmpty()) {
+            setTargetIp(savedIp, showToast = false)
+        } else {
+            autoScanServer()
+        }
+
         statusSyncHandler.post(statusSyncRunnable)
     }
 
@@ -376,10 +389,16 @@ class ClientCamoActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun setTargetIp(ip: String) {
+    private fun setTargetIp(ip: String, showToast: Boolean = true) {
         targetUrl = "http://$ip:8080"
         tvTargetIpCamo.text = "🟢"
-        Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
+
+        // 正常に設定されたIPを永続化
+        prefs.edit().putString(PREF_KEY_LAST_IP, ip).apply()
+
+        if (showToast) {
+            Toast.makeText(this, "接続先を $ip に設定しました", Toast.LENGTH_SHORT).show()
+        }
         if (isPreviewVisible) reloadStream()
     }
 
